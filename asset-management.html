@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>個人資産管理</title>
+  <style>
+    :root {
+      --bg: #f4f6f8;
+      --panel: #ffffff;
+      --line: #d9dee5;
+      --text: #1f2933;
+      --muted: #6b7280;
+      --blue: #2563eb;
+      --blue-dark: #1d4ed8;
+      --red: #dc2626;
+      --red-light: #fca5a5;
+      --green: #15803d;
+      --orange-light: #fed7aa;
+      --orange-hover: #fdba74;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 13px;
+    }
+
+    header {
+      padding: 10px 14px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--line);
+    }
+
+    h1 { margin: 0 0 8px; font-size: 18px; font-weight: 700; }
+
+    button, input, select, textarea { font: inherit; }
+
+    button {
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--text);
+      border-radius: 6px;
+      padding: 5px 8px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    button:hover { background: #f9fafb; }
+    button.primary { background: var(--blue); border-color: var(--blue); color: #fff; }
+    button.primary:hover { background: var(--blue-dark); }
+    button.orange { background: var(--orange-light); border-color: var(--orange-hover); color: #7c2d12; }
+    button.orange:hover { background: var(--orange-hover); }
+    button.danger { color: var(--red); border-color: #fecaca; }
+    button.small { padding: 3px 7px; font-size: 12px; }
+    .drag-handle { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--muted); cursor: grab; user-select: none; touch-action: none; }
+    .drag-handle:active { cursor: grabbing; }
+    tr.dragging { opacity: 0.92; filter: drop-shadow(0 6px 10px rgba(37, 99, 235, 0.18)); }
+    tr.dragging td { background: #eaf6ff; transform: translateY(-2px); transition: background 0.12s ease, transform 0.12s ease; }
+
+    input, select, textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 5px 7px;
+      background: #fff;
+      color: var(--text);
+    }
+
+    textarea { min-height: 30px; resize: vertical; }
+
+    .toolbar {
+      display: grid;
+      grid-template-columns: minmax(180px, 280px) repeat(5, auto);
+      gap: 6px;
+      align-items: center;
+    }
+
+    .url-toolbar { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+    .meta { display: grid; grid-template-columns: 150px 1fr; gap: 6px; margin-top: 8px; }
+    main { padding: 10px 14px 18px; }
+
+    .compare-bar {
+      display: grid;
+      grid-template-columns: 130px max-content minmax(180px, 320px) 180px;
+      justify-content: start;
+      gap: 6px;
+      align-items: center;
+      margin-bottom: 8px;
+      padding: 8px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+
+    .check-row { display: flex; align-items: center; gap: 8px; color: var(--muted); }
+    .check-row input { width: auto; }
+    .summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 8px; }
+    .summary-box { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+    .summary-label { color: var(--muted); font-size: 12px; margin-bottom: 3px; }
+    .summary-label.asset-label { color: var(--blue); }
+    .summary-label.liability-label { color: var(--red); }
+    .summary-label.net-worth-label { color: var(--green); }
+    .summary-value { font-size: 17px; font-weight: 700; }
+    .summary-diff { margin-top: 3px; font-size: 12px; color: var(--muted); }
+    .positive { color: var(--text); }
+    .negative { color: var(--red); }
+    #snapshotSelect { font-weight: 700; }
+    .sheet { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: start; }
+
+    section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+    .section-head { display: flex; justify-content: space-between; gap: 8px; align-items: center; padding: 7px 10px; border-bottom: 1px solid var(--line); background: #fbfcfd; }
+    h2 { margin: 0; font-size: 14px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border-bottom: 1px solid var(--line); padding: 5px 6px; vertical-align: middle; }
+    th { background: #f9fafb; color: var(--muted); font-size: 12px; font-weight: 600; text-align: left; }
+    td.amount-cell input { text-align: right; }
+    .compare-cell { min-width: 120px; font-size: 12px; color: var(--muted); line-height: 1.35; }
+    .compare-cell.positive { color: var(--muted); }
+    .compare-cell.negative { color: #b36a6a; }
+    .row-actions { display: flex; justify-content: flex-end; align-items: center; gap: 12px; min-width: 96px; }
+    .total-row td { background: #fbfcfd; font-weight: 700; }
+    .empty { padding: 16px; color: var(--muted); text-align: center; }
+    .url-page-wrap { display: grid; gap: 14px; max-width: 980px; }
+    .link-form { display: grid; grid-template-columns: 180px 1fr auto; gap: 6px; padding: 8px; border-bottom: 1px solid var(--line); }
+    .link-list { padding: 8px 10px 10px; display: grid; gap: 6px; }
+    .link-item { display: grid; grid-template-columns: 180px 1fr auto; gap: 6px; align-items: center; padding: 6px 0; border-bottom: 1px solid #eef1f5; }
+    .link-item:last-child { border-bottom: 0; }
+    .link-item a { color: var(--blue); word-break: break-all; text-decoration: underline; }
+    .hidden { display: none; }
+
+    @media (max-width: 900px) {
+      .toolbar, .meta, .compare-bar, .summary, .sheet, .link-form, .link-item { grid-template-columns: 1fr; }
+      main { padding: 10px; }
+      header { padding: 10px; }
+      .toolbar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .toolbar #snapshotSelect { grid-column: 1 / -1; }
+      .toolbar button { min-height: 40px; }
+      .compare-bar { gap: 8px; }
+      .compare-bar select { min-width: 0; }
+      .summary-box { padding: 10px; }
+      section { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      section table { min-width: 590px; }
+      .drag-handle { width: 32px; height: 32px; }
+    }
+  </style>
+</head>
+<body>
+  <header id="appHeader">
+    <h1>個人資産管理</h1>
+    <div class="toolbar">
+      <select id="snapshotSelect"></select>
+      <button id="addSnapshotBtn" class="primary">新しい表を追加</button>
+      <button id="deleteSnapshotBtn" class="danger">表を削除</button>
+      <button id="openUrlPageBtn" class="orange">URL一覧</button>
+      <button id="exportBtn">バックアップ出力</button>
+      <button id="importBtn">バックアップ読込</button>
+      <input id="importFile" class="hidden" type="file" accept="application/json">
+    </div>
+    <div class="meta">
+      <input id="dateInput" type="date">
+      <textarea id="memoInput" placeholder="メモ"></textarea>
+    </div>
+  </header>
+
+  <header id="urlHeader" class="hidden">
+    <h1>URL一覧</h1>
+    <div class="url-toolbar"><button id="backToAppBtn" class="primary">資産管理に戻る</button></div>
+  </header>
+
+  <main id="appPage">
+    <div class="compare-bar">
+      <label class="check-row"><input id="showCompareInput" type="checkbox" checked>増減を表示</label>
+      <div>比較先表</div>
+      <select id="compareSelect"></select>
+      <div id="saveStatus">保存済み</div>
+    </div>
+
+    <div class="summary">
+      <div class="summary-box"><div class="summary-label asset-label">資産合計</div><div id="assetTotal" class="summary-value">0円</div><div id="assetTotalDiff" class="summary-diff"></div></div>
+      <div class="summary-box"><div class="summary-label liability-label">負債合計</div><div id="liabilityTotal" class="summary-value">0円</div><div id="liabilityTotalDiff" class="summary-diff"></div></div>
+      <div class="summary-box"><div class="summary-label net-worth-label">純資産</div><div id="netWorth" class="summary-value">0円</div><div id="netWorthDiff" class="summary-diff"></div></div>
+    </div>
+
+    <div class="sheet">
+      <section>
+        <div class="section-head"><h2>資産</h2><button id="addAssetBtn" class="small">行を追加</button></div>
+        <table>
+          <thead><tr><th>項目名</th><th>金額</th><th class="compare-column">増減</th><th></th></tr></thead>
+          <tbody id="assetBody"></tbody>
+          <tfoot><tr class="total-row"><td>合計</td><td id="assetTableTotal" style="text-align:right;">0円</td><td id="assetTableDiff" class="compare-cell"></td><td></td></tr></tfoot>
+        </table>
+      </section>
+
+      <section>
+        <div class="section-head"><h2>負債</h2><button id="addLiabilityBtn" class="small">行を追加</button></div>
+        <table>
+          <thead><tr><th>項目名</th><th>金額</th><th class="compare-column">増減</th><th></th></tr></thead>
+          <tbody id="liabilityBody"></tbody>
+          <tfoot><tr class="total-row"><td>合計</td><td id="liabilityTableTotal" style="text-align:right;">0円</td><td id="liabilityTableDiff" class="compare-cell"></td><td></td></tr></tfoot>
+        </table>
+      </section>
+    </div>
+  </main>
+
+  <main id="urlPage" class="hidden">
+    <div class="url-page-wrap">
+      <section>
+        <div class="section-head"><h2>URLを追加</h2></div>
+        <div class="link-form">
+          <input id="linkNameInput" type="text" placeholder="表示名">
+          <input id="linkUrlInput" type="url" placeholder="URL">
+          <button id="addLinkBtn">URLを追加</button>
+        </div>
+      </section>
+      <section>
+        <div class="section-head"><h2>保存済みURL</h2></div>
+        <div id="linkList" class="link-list"></div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    const STORAGE_KEY = "personalBalanceSheetAppDataV1";
+    const defaultData = { currentSnapshotId: "", compareSnapshotId: "", showCompare: true, snapshots: [], links: [] };
+    let appData = loadData();
+    let dragState = null;
+
+    const elements = {
+      appHeader: document.getElementById("appHeader"), urlHeader: document.getElementById("urlHeader"), appPage: document.getElementById("appPage"), urlPage: document.getElementById("urlPage"),
+      snapshotSelect: document.getElementById("snapshotSelect"), addSnapshotBtn: document.getElementById("addSnapshotBtn"), deleteSnapshotBtn: document.getElementById("deleteSnapshotBtn"), openUrlPageBtn: document.getElementById("openUrlPageBtn"), backToAppBtn: document.getElementById("backToAppBtn"), exportBtn: document.getElementById("exportBtn"), importBtn: document.getElementById("importBtn"), importFile: document.getElementById("importFile"),
+      dateInput: document.getElementById("dateInput"), memoInput: document.getElementById("memoInput"), showCompareInput: document.getElementById("showCompareInput"), compareSelect: document.getElementById("compareSelect"), saveStatus: document.getElementById("saveStatus"),
+      assetTotal: document.getElementById("assetTotal"), liabilityTotal: document.getElementById("liabilityTotal"), netWorth: document.getElementById("netWorth"), assetTotalDiff: document.getElementById("assetTotalDiff"), liabilityTotalDiff: document.getElementById("liabilityTotalDiff"), netWorthDiff: document.getElementById("netWorthDiff"),
+      assetBody: document.getElementById("assetBody"), liabilityBody: document.getElementById("liabilityBody"), addAssetBtn: document.getElementById("addAssetBtn"), addLiabilityBtn: document.getElementById("addLiabilityBtn"), assetTableTotal: document.getElementById("assetTableTotal"), liabilityTableTotal: document.getElementById("liabilityTableTotal"), assetTableDiff: document.getElementById("assetTableDiff"), liabilityTableDiff: document.getElementById("liabilityTableDiff"),
+      linkNameInput: document.getElementById("linkNameInput"), linkUrlInput: document.getElementById("linkUrlInput"), addLinkBtn: document.getElementById("addLinkBtn"), linkList: document.getElementById("linkList")
+    };
+
+    ensureInitialSnapshot();
+    registerEvents();
+    renderAll();
+
+    function registerEvents() {
+      elements.snapshotSelect.addEventListener("change", function () { appData.currentSnapshotId = this.value; saveData(); renderAll(); });
+      elements.addSnapshotBtn.addEventListener("click", addSnapshot);
+      elements.deleteSnapshotBtn.addEventListener("click", deleteCurrentSnapshot);
+      elements.openUrlPageBtn.addEventListener("click", showUrlPage);
+      elements.backToAppBtn.addEventListener("click", showAppPage);
+      elements.dateInput.addEventListener("input", function () { const snapshot = getCurrentSnapshot(); snapshot.date = this.value; saveData(); renderSnapshotSelect(); });
+      elements.memoInput.addEventListener("input", function () { getCurrentSnapshot().memo = this.value; saveData(); renderSnapshotSelect(); });
+      elements.showCompareInput.addEventListener("change", function () { appData.showCompare = this.checked; saveData(); updateCalculations(); });
+      elements.compareSelect.addEventListener("change", function () { appData.compareSnapshotId = this.value; saveData(); updateCalculations(); });
+      elements.addAssetBtn.addEventListener("click", function () { addItem("assets"); });
+      elements.addLiabilityBtn.addEventListener("click", function () { addItem("liabilities"); });
+      elements.assetBody.addEventListener("input", handleItemInput);
+      elements.liabilityBody.addEventListener("input", handleItemInput);
+      elements.assetBody.addEventListener("focus", handleAmountFocus, true);
+      elements.liabilityBody.addEventListener("focus", handleAmountFocus, true);
+      elements.assetBody.addEventListener("blur", handleAmountBlur, true);
+      elements.liabilityBody.addEventListener("blur", handleAmountBlur, true);
+      elements.assetBody.addEventListener("keydown", handleItemKeydown);
+      elements.liabilityBody.addEventListener("keydown", handleItemKeydown);
+      elements.assetBody.addEventListener("pointerdown", handleDragStart);
+      elements.liabilityBody.addEventListener("pointerdown", handleDragStart);
+      elements.assetBody.addEventListener("click", handleItemDelete);
+      elements.liabilityBody.addEventListener("click", handleItemDelete);
+      document.addEventListener("pointermove", handleDragMove);
+      document.addEventListener("pointerup", handleDragEnd);
+      elements.addLinkBtn.addEventListener("click", addLink);
+      elements.linkList.addEventListener("click", handleLinkDelete);
+      elements.exportBtn.addEventListener("click", exportData);
+      elements.importBtn.addEventListener("click", function () { elements.importFile.value = ""; elements.importFile.click(); });
+      elements.importFile.addEventListener("change", importData);
+    }
+
+    function cloneDefaultData() { return JSON.parse(JSON.stringify(defaultData)); }
+    function loadData() { try { const saved = localStorage.getItem(STORAGE_KEY); return saved ? normalizeData(JSON.parse(saved)) : cloneDefaultData(); } catch (error) { return cloneDefaultData(); } }
+    function normalizeData(data) { const normalized = cloneDefaultData(); if (!data || typeof data !== "object") return normalized; normalized.currentSnapshotId = typeof data.currentSnapshotId === "string" ? data.currentSnapshotId : ""; normalized.compareSnapshotId = typeof data.compareSnapshotId === "string" ? data.compareSnapshotId : ""; normalized.showCompare = typeof data.showCompare === "boolean" ? data.showCompare : true; normalized.snapshots = Array.isArray(data.snapshots) ? data.snapshots.map(normalizeSnapshot) : []; normalized.links = Array.isArray(data.links) ? data.links.map(normalizeLink) : []; return normalized; }
+    function normalizeSnapshot(snapshot) { snapshot = snapshot && typeof snapshot === "object" ? snapshot : {}; return { id: typeof snapshot.id === "string" ? snapshot.id : createId(), date: typeof snapshot.date === "string" ? snapshot.date : getToday(), memo: typeof snapshot.memo === "string" ? snapshot.memo : "", assets: Array.isArray(snapshot.assets) ? snapshot.assets.map(normalizeItem) : [], liabilities: Array.isArray(snapshot.liabilities) ? snapshot.liabilities.map(normalizeItem) : [] }; }
+    function normalizeItem(item) { item = item && typeof item === "object" ? item : {}; return { id: typeof item.id === "string" ? item.id : createId(), name: typeof item.name === "string" ? item.name : "", amount: Number.isFinite(Number(item.amount)) ? Number(item.amount) : 0 }; }
+    function normalizeLink(link) { link = link && typeof link === "object" ? link : {}; return { id: typeof link.id === "string" ? link.id : createId(), name: typeof link.name === "string" ? link.name : "", url: typeof link.url === "string" ? link.url : "" }; }
+    function saveData() { localStorage.setItem(STORAGE_KEY, JSON.stringify(appData)); elements.saveStatus.textContent = "保存済み"; }
+    function ensureInitialSnapshot() { if (appData.snapshots.length === 0) { const snapshot = createBlankSnapshot(); appData.snapshots.push(snapshot); appData.currentSnapshotId = snapshot.id; appData.compareSnapshotId = ""; saveData(); return; } const currentExists = appData.snapshots.some(function (snapshot) { return snapshot.id === appData.currentSnapshotId; }); if (!currentExists) { appData.currentSnapshotId = appData.snapshots[0].id; saveData(); } }
+    function createBlankSnapshot() { return { id: createId(), date: getToday(), memo: "", assets: [], liabilities: [] }; }
+    function createId() { return String(Date.now()) + "-" + Math.random().toString(36).slice(2); }
+    function getToday() { const date = new Date(); return date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0") + "-" + String(date.getDate()).padStart(2, "0"); }
+    function getCurrentSnapshot() { return appData.snapshots.find(function (snapshot) { return snapshot.id === appData.currentSnapshotId; }); }
+    function getCompareSnapshot() { if (!appData.compareSnapshotId) return null; return appData.snapshots.find(function (snapshot) { return snapshot.id === appData.compareSnapshotId; }) || null; }
+    function showUrlPage() { elements.appHeader.classList.add("hidden"); elements.appPage.classList.add("hidden"); elements.urlHeader.classList.remove("hidden"); elements.urlPage.classList.remove("hidden"); renderLinks(); }
+    function showAppPage() { elements.urlHeader.classList.add("hidden"); elements.urlPage.classList.add("hidden"); elements.appHeader.classList.remove("hidden"); elements.appPage.classList.remove("hidden"); renderAll(); }
+    function addSnapshot() { const current = getCurrentSnapshot(); const newSnapshot = current ? { id: createId(), date: getToday(), memo: "", assets: current.assets.map(function (item) { return { id: createId(), name: item.name, amount: item.amount }; }), liabilities: current.liabilities.map(function (item) { return { id: createId(), name: item.name, amount: item.amount }; }) } : createBlankSnapshot(); appData.snapshots.push(newSnapshot); appData.currentSnapshotId = newSnapshot.id; appData.compareSnapshotId = current ? current.id : ""; saveData(); renderAll(); }
+    function deleteCurrentSnapshot() { const current = getCurrentSnapshot(); if (!current) return; if (!confirm("「" + getSnapshotLabel(current) + "」を削除しますか？")) return; appData.snapshots = appData.snapshots.filter(function (snapshot) { return snapshot.id !== current.id; }); if (appData.snapshots.length === 0) appData.snapshots.push(createBlankSnapshot()); appData.currentSnapshotId = appData.snapshots[appData.snapshots.length - 1].id; if (appData.compareSnapshotId === current.id) appData.compareSnapshotId = ""; saveData(); renderAll(); }
+    function addItem(type) { const snapshot = getCurrentSnapshot(); if (!snapshot) return; snapshot[type].push({ id: createId(), name: "", amount: 0 }); saveData(); renderItems(); updateCalculations(); }
+    function handleItemInput(event) { const input = event.target; const row = input.closest("tr"); if (!row || !input.dataset.field) return; const snapshot = getCurrentSnapshot(); const type = row.dataset.type; const itemId = row.dataset.id; if (!snapshot || !snapshot[type]) return; const item = snapshot[type].find(function (entry) { return entry.id === itemId; }); if (!item) return; if (input.dataset.field === "name") item.name = input.value; if (input.dataset.field === "amount") { item.amount = parseAmount(input.value); applyNumberColor(input, item.amount); } saveData(); updateCalculations(); }
+    function handleAmountFocus(event) { const input = event.target; if (input.dataset.field !== "amount") return; if (parseAmount(input.value) === 0) input.value = ""; }
+    function handleAmountBlur(event) { const input = event.target; if (input.dataset.field !== "amount") return; input.value = formatInputNumber(parseAmount(input.value)); }
+    function handleItemKeydown(event) { const input = event.target; if (!input.dataset.field || event.key !== "Enter") return; event.preventDefault(); input.blur(); }
+    function handleItemDelete(event) { const button = event.target.closest("[data-action]"); if (!button || button.dataset.action !== "delete-item") return; const row = button.closest("tr"); const snapshot = getCurrentSnapshot(); const type = row.dataset.type; const itemId = row.dataset.id; const item = snapshot[type].find(function (entry) { return entry.id === itemId; }); const label = item && item.name.trim() ? item.name.trim() : "この項目"; if (!confirm("「" + label + "」を削除しますか？")) return; snapshot[type] = snapshot[type].filter(function (item) { return item.id !== itemId; }); saveData(); renderItems(); updateCalculations(); }
+    function handleDragStart(event) { const handle = event.target.closest("[data-action='drag-handle']"); if (!handle) return; const row = handle.closest("tr"); if (!row) return; event.preventDefault(); dragState = { type: row.dataset.type, itemId: row.dataset.id }; row.classList.add("dragging"); }
+    function handleDragMove(event) { if (!dragState) return; const target = document.elementFromPoint(event.clientX, event.clientY); const row = target ? target.closest("tr[data-type='" + dragState.type + "']") : null; if (!row || row.dataset.id === dragState.itemId) return; moveItemTo(dragState.type, dragState.itemId, row.dataset.id); }
+    function handleDragEnd() { dragState = null; document.querySelectorAll("tr.dragging").forEach(function (row) { row.classList.remove("dragging"); }); }
+    function moveItemTo(type, itemId, targetId) { const snapshot = getCurrentSnapshot(); if (!snapshot || !snapshot[type]) return; const items = snapshot[type]; const fromIndex = items.findIndex(function (item) { return item.id === itemId; }); const toIndex = items.findIndex(function (item) { return item.id === targetId; }); if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return; const item = items.splice(fromIndex, 1)[0]; items.splice(toIndex, 0, item); saveData(); renderItems(); updateCalculations(); const row = document.querySelector("tr[data-type='" + type + "'][data-id='" + itemId + "']"); if (row) row.classList.add("dragging"); }
+    function renderAll() { renderSnapshotSelect(); renderSnapshotMeta(); renderCompareControls(); renderItems(); updateCalculations(); }
+    function renderSnapshotSelect() { elements.snapshotSelect.innerHTML = ""; appData.snapshots.forEach(function (snapshot) { const option = document.createElement("option"); option.value = snapshot.id; option.textContent = getSnapshotLabel(snapshot); elements.snapshotSelect.appendChild(option); }); elements.snapshotSelect.value = appData.currentSnapshotId; }
+    function renderSnapshotMeta() { const snapshot = getCurrentSnapshot(); if (!snapshot) return; elements.dateInput.value = snapshot.date; elements.memoInput.value = snapshot.memo; }
+    function renderCompareControls() { elements.showCompareInput.checked = appData.showCompare; elements.compareSelect.innerHTML = ""; const noneOption = document.createElement("option"); noneOption.value = ""; noneOption.textContent = "比較対象なし"; elements.compareSelect.appendChild(noneOption); appData.snapshots.forEach(function (snapshot) { if (snapshot.id === appData.currentSnapshotId) return; const option = document.createElement("option"); option.value = snapshot.id; option.textContent = getSnapshotLabel(snapshot); elements.compareSelect.appendChild(option); }); const exists = Array.from(elements.compareSelect.options).some(function (option) { return option.value === appData.compareSnapshotId; }); if (!exists) { appData.compareSnapshotId = ""; saveData(); } elements.compareSelect.value = appData.compareSnapshotId; }
+    function renderItems() { const snapshot = getCurrentSnapshot(); if (!snapshot) return; renderItemBody(elements.assetBody, "assets", snapshot.assets); renderItemBody(elements.liabilityBody, "liabilities", snapshot.liabilities); }
+    function renderItemBody(body, type, items) { body.innerHTML = ""; if (items.length === 0) { const row = document.createElement("tr"); const cell = document.createElement("td"); cell.colSpan = 4; cell.className = "empty"; cell.textContent = "行がありません"; row.appendChild(cell); body.appendChild(row); return; } items.forEach(function (item) { const row = document.createElement("tr"); row.dataset.type = type; row.dataset.id = item.id; row.innerHTML = "<td><input data-field=\"name\" type=\"text\" value=\"" + escapeHtml(item.name) + "\" placeholder=\"項目名\"></td><td class=\"amount-cell\"><input data-field=\"amount\" type=\"text\" inputmode=\"decimal\" value=\"" + formatInputNumber(item.amount) + "\"></td><td class=\"compare-cell\" data-compare-cell=\"true\"></td><td><div class=\"row-actions\"><span class=\"drag-handle\" data-action=\"drag-handle\" title=\"ドラッグして順序変更\">↕</span><button class=\"small danger\" data-action=\"delete-item\">削除</button></div></td>"; applyNumberColor(row.querySelector("[data-field=\"amount\"]"), item.amount); body.appendChild(row); }); }
+    function addLink() { const name = elements.linkNameInput.value.trim(); const url = elements.linkUrlInput.value.trim(); if (!name || !url) { alert("表示名とURLを入力してください。"); return; } appData.links.push({ id: createId(), name: name, url: url }); elements.linkNameInput.value = ""; elements.linkUrlInput.value = ""; saveData(); renderLinks(); }
+    function renderLinks() { elements.linkList.innerHTML = ""; if (appData.links.length === 0) { const empty = document.createElement("div"); empty.className = "empty"; empty.textContent = "保存されたURLはありません"; elements.linkList.appendChild(empty); return; } appData.links.forEach(function (link) { const item = document.createElement("div"); const href = normalizeUrl(link.url); item.className = "link-item"; item.innerHTML = "<strong>" + escapeHtml(link.name || "名称未設定") + "</strong><a href=\"" + escapeAttribute(href) + "\" target=\"_blank\" rel=\"noopener noreferrer\">" + escapeHtml(link.url) + "</a><button class=\"small danger\" data-action=\"delete-link\" data-id=\"" + escapeAttribute(link.id) + "\">削除</button>"; elements.linkList.appendChild(item); }); }
+    function handleLinkDelete(event) { const button = event.target.closest("[data-action='delete-link']"); if (!button) return; const id = button.dataset.id; appData.links = appData.links.filter(function (link) { return link.id !== id; }); saveData(); renderLinks(); }
+    function updateCalculations() { const current = getCurrentSnapshot(); const compare = getCompareSnapshot(); if (!current) return; const assetTotal = sumItems(current.assets); const liabilityTotal = sumItems(current.liabilities); const netWorth = assetTotal - liabilityTotal; const compareAssetTotal = compare ? sumItems(compare.assets) : 0; const compareLiabilityTotal = compare ? sumItems(compare.liabilities) : 0; const compareNetWorth = compareAssetTotal - compareLiabilityTotal; elements.assetTotal.textContent = formatYen(assetTotal); elements.liabilityTotal.textContent = formatYen(liabilityTotal); elements.netWorth.textContent = formatYen(netWorth); elements.assetTableTotal.textContent = formatYen(assetTotal); elements.liabilityTableTotal.textContent = formatYen(liabilityTotal); applyNumberColor(elements.assetTotal, assetTotal); applyNumberColor(elements.liabilityTotal, liabilityTotal); applyNumberColor(elements.netWorth, netWorth); applyNumberColor(elements.assetTableTotal, assetTotal); applyNumberColor(elements.liabilityTableTotal, liabilityTotal); const showCompare = appData.showCompare && Boolean(compare); setDiff(elements.assetTotalDiff, showCompare, assetTotal, compareAssetTotal); setDiff(elements.liabilityTotalDiff, showCompare, liabilityTotal, compareLiabilityTotal); setDiff(elements.netWorthDiff, showCompare, netWorth, compareNetWorth); setDiff(elements.assetTableDiff, showCompare, assetTotal, compareAssetTotal); setDiff(elements.liabilityTableDiff, showCompare, liabilityTotal, compareLiabilityTotal); updateItemDiffs("assets", current.assets, compare ? compare.assets : []); updateItemDiffs("liabilities", current.liabilities, compare ? compare.liabilities : []); updateCompareVisibility(); }
+    function updateItemDiffs(type, currentItems, compareItems) { const compareMap = createAmountMap(compareItems); const rows = document.querySelectorAll("tr[data-type='" + type + "']"); rows.forEach(function (row) { const item = currentItems.find(function (entry) { return entry.id === row.dataset.id; }); const cell = row.querySelector("[data-compare-cell='true']"); if (!item || !cell) return; const baseAmount = compareMap.get(item.name.trim()) || 0; setDiff(cell, appData.showCompare && Boolean(getCompareSnapshot()), item.amount, baseAmount); }); }
+    function createAmountMap(items) { const map = new Map(); items.forEach(function (item) { const key = item.name.trim(); if (!key) return; map.set(key, (map.get(key) || 0) + item.amount); }); return map; }
+    function updateCompareVisibility() { const visible = appData.showCompare && Boolean(getCompareSnapshot()); const display = visible ? "" : "none"; document.querySelectorAll(".compare-column, .compare-cell, .summary-diff").forEach(function (element) { element.style.display = display; }); }
+    function setDiff(element, shouldShow, current, base) { element.classList.remove("positive", "negative"); if (!shouldShow) { element.textContent = ""; return; } const delta = current - base; const percent = base === 0 ? "-" : ((delta / Math.abs(base)) * 100).toFixed(1) + "%"; const sign = delta > 0 ? "+" : ""; element.textContent = sign + formatYen(delta) + " / " + percent; applyNumberColor(element, delta); }
+    function applyNumberColor(element, value) { const number = Number(value); element.classList.toggle("positive", Number.isFinite(number) && number >= 0); element.classList.toggle("negative", Number.isFinite(number) && number < 0); }
+    function sumItems(items) { return items.reduce(function (total, item) { return total + Number(item.amount || 0); }, 0); }
+    function parseAmount(value) { const cleaned = String(value).replace(/[,\s円]/g, "").replace(/[０-９]/g, function (char) { return String.fromCharCode(char.charCodeAt(0) - 65248); }).replace(/－/g, "-"); const number = Number(cleaned); return Number.isFinite(number) ? number : 0; }
+    function formatInputNumber(value) { return Number(value || 0).toLocaleString("ja-JP"); }
+    function formatYen(value) { const number = Number(value || 0); const sign = number < 0 ? "-" : ""; return sign + Math.abs(number).toLocaleString("ja-JP") + "円"; }
+    function getSnapshotLabel(snapshot) { const memo = snapshot.memo.trim(); return snapshot.date + (memo ? " / " + memo : ""); }
+    function normalizeUrl(url) { const trimmed = String(url).trim(); return /^https?:\/\//i.test(trimmed) ? trimmed : "https://" + trimmed; }
+    function exportData() { const json = JSON.stringify(appData, null, 2); const blob = new Blob([json], { type: "application/json" }); const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = "personal-balance-sheet-backup.json"; document.body.appendChild(link); link.click(); document.body.removeChild(link); URL.revokeObjectURL(url); }
+    function importData(event) { const file = event.target.files[0]; if (!file) return; if (!confirm("現在のデータをバックアップファイルの内容で上書きしますか？")) return; const reader = new FileReader(); reader.onload = function () { try { appData = normalizeData(JSON.parse(reader.result)); ensureInitialSnapshot(); saveData(); showAppPage(); alert("バックアップを読み込みました。"); } catch (error) { alert("バックアップファイルを読み込めませんでした。"); } }; reader.onerror = function () { alert("ファイルの読み込みに失敗しました。"); }; reader.readAsText(file); }
+    function escapeHtml(value) { return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;"); }
+    function escapeAttribute(value) { return escapeHtml(value); }
+  </script>
+</body>
+</html>
+
+
+
