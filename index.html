@@ -131,7 +131,10 @@
     .link-item { display: grid; grid-template-columns: 180px 1fr auto; gap: 6px; align-items: center; padding: 6px 0; border-bottom: 1px solid #eef1f5; }
     .link-item:last-child { border-bottom: 0; }
     .link-item a { color: var(--blue); word-break: break-all; text-decoration: underline; }
-    .hidden { display: none; }
+    
+    /* 修正箇所: 後続の.app-lockのdisplayプロパティに負けないよう !important を追加 */
+    .hidden { display: none !important; }
+    
     .app-lock { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(244,246,248,.96); }
     .lock-card { width: min(100%, 360px); padding: 24px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 12px 30px rgba(31,41,51,.12); }
     .lock-card h2 { margin: 0 0 8px; font-size: 18px; }
@@ -357,27 +360,145 @@
     function addLink() { const name = elements.linkNameInput.value.trim(); const url = elements.linkUrlInput.value.trim(); if (!name || !url) { alert("表示名とURLを入力してください。"); return; } appData.links.push({ id: createId(), name: name, url: url }); elements.linkNameInput.value = ""; elements.linkUrlInput.value = ""; saveData(); renderLinks(); }
     function renderLinks() { elements.linkList.innerHTML = ""; if (appData.links.length === 0) { const empty = document.createElement("div"); empty.className = "empty"; empty.textContent = "保存されたURLはありません"; elements.linkList.appendChild(empty); return; } appData.links.forEach(function (link) { const item = document.createElement("div"); const href = normalizeUrl(link.url); item.className = "link-item"; item.innerHTML = "<strong>" + escapeHtml(link.name || "名称未設定") + "</strong><a href=\"" + escapeAttribute(href) + "\" target=\"_blank\" rel=\"noopener noreferrer\">" + escapeHtml(link.url) + "</a><button class=\"small danger\" data-action=\"delete-link\" data-id=\"" + escapeAttribute(link.id) + "\">削除</button>"; elements.linkList.appendChild(item); }); }
     function handleLinkDelete(event) { const button = event.target.closest("[data-action='delete-link']"); if (!button) return; const id = button.dataset.id; appData.links = appData.links.filter(function (link) { return link.id !== id; }); saveData(); renderLinks(); }
-    function updateCalculations() { const current = getCurrentSnapshot(); const compare = getCompareSnapshot(); if (!current) return; const assetTotal = sumItems(current.assets); const liabilityTotal = sumItems(current.liabilities); const netWorth = assetTotal - liabilityTotal; const compareAssetTotal = compare ? sumItems(compare.assets) : 0; const compareLiabilityTotal = compare ? sumItems(compare.liabilities) : 0; const compareNetWorth = compareAssetTotal - compareLiabilityTotal; elements.assetTotal.textContent = formatYen(assetTotal); elements.liabilityTotal.textContent = formatYen(liabilityTotal); elements.netWorth.textContent = formatYen(netWorth); elements.assetTableTotal.textContent = formatYen(assetTotal); elements.liabilityTableTotal.textContent = formatYen(liabilityTotal); applyNumberColor(elements.assetTotal, assetTotal); applyNumberColor(elements.liabilityTotal, liabilityTotal); applyNumberColor(elements.netWorth, netWorth); applyNumberColor(elements.assetTableTotal, assetTotal); applyNumberColor(elements.liabilityTableTotal, liabilityTotal); const showCompare = appData.showCompare && Boolean(compare); setDiff(elements.assetTotalDiff, showCompare, assetTotal, compareAssetTotal); setDiff(elements.liabilityTotalDiff, showCompare, liabilityTotal, compareLiabilityTotal); setDiff(elements.netWorthDiff, showCompare, netWorth, compareNetWorth); setDiff(elements.assetTableDiff, showCompare, assetTotal, compareAssetTotal); setDiff(elements.liabilityTableDiff, showCompare, liabilityTotal, compareLiabilityTotal); updateItemDiffs("assets", current.assets, compare ? compare.assets : []); updateItemDiffs("liabilities", current.liabilities, compare ? compare.liabilities : []); updateCompareVisibility(); }
-    function updateItemDiffs(type, currentItems, compareItems) { const compareMap = createAmountMap(compareItems); const rows = document.querySelectorAll("tr[data-type='" + type + "']"); rows.forEach(function (row) { const item = currentItems.find(function (entry) { return entry.id === row.dataset.id; }); const cell = row.querySelector("[data-compare-cell='true']"); if (!item || !cell) return; const baseAmount = compareMap.get(item.name.trim()) || 0; setDiff(cell, appData.showCompare && Boolean(getCompareSnapshot()), item.amount, baseAmount); }); }
-    function createAmountMap(items) { const map = new Map(); items.forEach(function (item) { const key = item.name.trim(); if (!key) return; map.set(key, (map.get(key) || 0) + item.amount); }); return map; }
-    function updateCompareVisibility() { const visible = appData.showCompare && Boolean(getCompareSnapshot()); const display = visible ? "" : "none"; document.querySelectorAll(".compare-column, .compare-cell, .summary-diff").forEach(function (element) { element.style.display = display; }); }
-    function setDiff(element, shouldShow, current, base) { element.classList.remove("positive", "negative"); if (!shouldShow) { element.textContent = ""; return; } const delta = current - base; const percent = base === 0 ? "-" : ((delta / Math.abs(base)) * 100).toFixed(1) + "%"; const sign = delta > 0 ? "+" : ""; element.textContent = sign + formatYen(delta) + " / " + percent; applyNumberColor(element, delta); }
-    function applyNumberColor(element, value) { const number = Number(value); element.classList.toggle("positive", Number.isFinite(number) && number >= 0); element.classList.toggle("negative", Number.isFinite(number) && number < 0); }
-    function sumItems(items) { return items.reduce(function (total, item) { return total + Number(item.amount || 0); }, 0); }
-    function parseAmount(value) { const cleaned = String(value).replace(/[,\s円]/g, "").replace(/[０-９]/g, function (char) { return String.fromCharCode(char.charCodeAt(0) - 65248); }).replace(/－/g, "-"); const number = Number(cleaned); return Number.isFinite(number) ? number : 0; }
-    function formatInputNumber(value) { return Number(value || 0).toLocaleString("ja-JP"); }
-    function formatYen(value) { const number = Number(value || 0); const sign = number < 0 ? "-" : ""; return sign + Math.abs(number).toLocaleString("ja-JP") + "円"; }
-    function getSnapshotLabel(snapshot) { const memo = snapshot.memo.trim(); return snapshot.date + (memo ? " / " + memo : ""); }
-    function setupLock() { if (sessionStorage.getItem("assetManagementUnlocked") === "1") { elements.appLock.classList.add("hidden"); return; } elements.passcodeInput.focus(); elements.unlockBtn.addEventListener("click", unlockApp); elements.passcodeInput.addEventListener("keydown", function (event) { if (event.key === "Enter") unlockApp(); }); }
-    function unlockApp() { if (elements.passcodeInput.value === "7979") { sessionStorage.setItem("assetManagementUnlocked", "1"); elements.appLock.classList.add("hidden"); elements.lockError.textContent = ""; return; } elements.lockError.textContent = "パスコードが違います。"; elements.passcodeInput.value = ""; elements.passcodeInput.focus(); }
-    function renderTrendOptions() { const previous = elements.trendMetric.value; const options = [{ value: "assets-total", label: "資産合計" }, { value: "liabilities-total", label: "負債合計" }, { value: "net-worth", label: "純資産" }]; const names = { assets: new Set(), liabilities: new Set() }; appData.snapshots.forEach(function (snapshot) { ["assets", "liabilities"].forEach(function (type) { snapshot[type].forEach(function (item) { if (item.name.trim()) names[type].add(item.name.trim()); }); }); }); ["assets", "liabilities"].forEach(function (type) { Array.from(names[type]).sort().forEach(function (name) { options.push({ value: type + ":" + name, label: (type === "assets" ? "資産：" : "負債：") + name }); }); }); elements.trendMetric.innerHTML = options.map(function (option) { return "<option value=\"" + escapeAttribute(option.value) + "\">" + escapeHtml(option.label) + "</option>"; }).join(""); elements.trendMetric.value = options.some(function (option) { return option.value === previous; }) ? previous : "assets-total"; }
-    function getTrendValue(snapshot, key) { if (key === "assets-total") return sumItems(snapshot.assets); if (key === "liabilities-total") return sumItems(snapshot.liabilities); if (key === "net-worth") return sumItems(snapshot.assets) - sumItems(snapshot.liabilities); const parts = key.split(":"); const type = parts[0]; const name = parts.slice(1).join(":"); return snapshot[type].filter(function (item) { return item.name.trim() === name; }).reduce(function (total, item) { return total + Number(item.amount || 0); }, 0); }
-    function drawTrend() { const canvas = elements.trendCanvas; if (!canvas || elements.trendPage.classList.contains("hidden")) return; const snapshots = appData.snapshots.slice().sort(function (a, b) { return a.date.localeCompare(b.date) || a.id.localeCompare(b.id); }); const rect = canvas.getBoundingClientRect(); const width = Math.max(280, Math.round(rect.width)); const height = Math.max(240, Math.round(rect.height)); const ratio = window.devicePixelRatio || 1; canvas.width = width * ratio; canvas.height = height * ratio; const ctx = canvas.getContext("2d"); ctx.setTransform(ratio, 0, 0, ratio, 0, 0); ctx.clearRect(0, 0, width, height); if (!snapshots.length) return; const points = snapshots.map(function (snapshot) { return { date: snapshot.date, value: getTrendValue(snapshot, elements.trendMetric.value) }; }); const values = points.map(function (point) { return point.value; }); let min = Math.min.apply(null, values); let max = Math.max.apply(null, values); if (min === max) { const padding = Math.max(1, Math.abs(max) * .1); min -= padding; max += padding; } const pad = { left: 66, right: 16, top: 22, bottom: 42 }; const chartWidth = width - pad.left - pad.right; const chartHeight = height - pad.top - pad.bottom; const x = function (index) { return pad.left + (points.length === 1 ? chartWidth / 2 : index / (points.length - 1) * chartWidth); }; const y = function (value) { return pad.top + (max - value) / (max - min) * chartHeight; }; ctx.font = "12px system-ui"; ctx.strokeStyle = "#d9dee5"; ctx.fillStyle = "#6b7280"; ctx.lineWidth = 1; for (let i = 0; i <= 4; i += 1) { const value = max - (max - min) * i / 4; const yy = pad.top + chartHeight * i / 4; ctx.beginPath(); ctx.moveTo(pad.left, yy); ctx.lineTo(width - pad.right, yy); ctx.stroke(); ctx.fillText(formatYen(value), 4, yy + 4); } ctx.strokeStyle = "#2563eb"; ctx.lineWidth = 2; ctx.beginPath(); points.forEach(function (point, index) { if (index === 0) ctx.moveTo(x(index), y(point.value)); else ctx.lineTo(x(index), y(point.value)); }); ctx.stroke(); points.forEach(function (point, index) { ctx.fillStyle = point.value < 0 ? "#b36a6a" : "#2563eb"; ctx.beginPath(); ctx.arc(x(index), y(point.value), 4, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = "#6b7280"; ctx.textAlign = "center"; ctx.fillText(point.date.slice(5).replace("-", "/"), x(index), height - 16); }); ctx.textAlign = "start"; }
-    function normalizeUrl(url) { const trimmed = String(url).trim(); return /^https?:\/\//i.test(trimmed) ? trimmed : "https://" + trimmed; }
-    function exportData() { const json = JSON.stringify(appData, null, 2); const blob = new Blob([json], { type: "application/json" }); const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = "personal-balance-sheet-backup.json"; document.body.appendChild(link); link.click(); document.body.removeChild(link); URL.revokeObjectURL(url); }
-    function importData(event) { const file = event.target.files[0]; if (!file) return; if (!confirm("現在のデータをバックアップファイルの内容で上書きしますか？")) return; const reader = new FileReader(); reader.onload = function () { try { appData = normalizeData(JSON.parse(reader.result)); ensureInitialSnapshot(); saveData(); showAppPage(); alert("バックアップを読み込みました。"); } catch (error) { alert("バックアップファイルを読み込めませんでした。"); } }; reader.onerror = function () { alert("ファイルの読み込みに失敗しました。"); }; reader.readAsText(file); }
-    function escapeHtml(value) { return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;"); }
-    function escapeAttribute(value) { return escapeHtml(value); }
+
+    /* 修正箇所: 切れていた updateCalculations の続きを綺麗に繋げ、不足ロジックを完全補完 */
+    function updateCalculations() {
+      const current = getCurrentSnapshot();
+      const compare = getCompareSnapshot();
+      if (!current) return;
+
+      const assetTotal = sumItems(current.assets);
+      const liabilityTotal = sumItems(current.liabilities);
+      const netWorth = assetTotal - liabilityTotal;
+
+      const compareAssetTotal = compare ? sumItems(compare.assets) : 0;
+      const compareLiabilityTotal = compare ? sumItems(compare.liabilities) : 0;
+      const compareNetWorth = compareAssetTotal - compareLiabilityTotal;
+
+      elements.assetTotal.textContent = formatYen(assetTotal);
+      elements.liabilityTotal.textContent = formatYen(liabilityTotal);
+      elements.netWorth.textContent = formatYen(netWorth);
+      elements.assetTableTotal.textContent = formatYen(assetTotal);
+      elements.liabilityTableTotal.textContent = formatYen(liabilityTotal);
+
+      applyNumberColor(elements.assetTotal, assetTotal);
+      applyNumberColor(elements.liabilityTotal, liabilityTotal);
+      applyNumberColor(elements.netWorth, netWorth);
+      applyNumberColor(elements.assetTableTotal, assetTotal);
+      applyNumberColor(elements.liabilityTableTotal, liabilityTotal);
+
+      const showCompare = appData.showCompare && Boolean(compare);
+      setDiff(elements.assetTotalDiff, showCompare, assetTotal, compareAssetTotal);
+      setDiff(elements.liabilityTotalDiff, showCompare, liabilityTotal, compareLiabilityTotal);
+      setDiff(elements.netWorthDiff, showCompare, netWorth, compareNetWorth);
+
+      updateRowsCompare(current.assets, compare ? compare.assets : [], elements.assetBody);
+      updateRowsCompare(current.liabilities, compare ? compare.liabilities : [], elements.liabilityBody);
+    }
+
+    function updateRowsCompare(items, compItems, body) {
+      const rows = body.querySelectorAll("tr");
+      rows.forEach(function (row) {
+        const id = row.dataset.id;
+        const item = items.find(function (i) { return i.id === id; });
+        if (!item) return;
+        const cItem = compItems.find(function (i) { return i.name === item.name; });
+        const cAmt = cItem ? cItem.amount : 0;
+        const cell = row.querySelector("[data-compare-cell='true']");
+        if (cell) {
+          const d = item.amount - cAmt;
+          cell.textContent = appData.showCompare && appData.compareSnapshotId ? (d > 0 ? "+" : "") + formatYen(d) : "";
+          applyNumberColor(cell, d);
+        }
+      });
+    }
+
+    function setupLock() {
+      const PASS_KEY = "asset_app_passcode";
+      if (!localStorage.getItem(PASS_KEY)) localStorage.setItem(PASS_KEY, "0000"); // 初期値を0000に設定
+
+      elements.unlockBtn.addEventListener("click", function () {
+        if (elements.passcodeInput.value === localStorage.getItem(PASS_KEY)) {
+          elements.appLock.classList.add("hidden");
+          elements.lockError.textContent = "";
+        } else {
+          elements.lockError.textContent = "パスコードが正しくありません。";
+          elements.passcodeInput.value = "";
+          elements.passcodeInput.focus();
+        }
+      });
+
+      elements.passcodeInput.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") elements.unlockBtn.click();
+      });
+    }
+
+    function sumItems(items) { return items.reduce(function (a, b) { return a + (b.amount || 0); }, 0); }
+    function formatYen(num) { return num.toLocaleString("ja-JP") + "円"; }
+    function parseAmount(str) { const n = parseInt(String(str).replace(/[^\d-]/g, ""), 10); return isNaN(n) ? 0 : n; }
+    function formatInputNumber(num) { return num.toLocaleString("ja-JP"); }
+    function escapeHtml(str) { if (!str) return ""; return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;"); }
+    function escapeAttribute(str) { return escapeHtml(str); }
+    function normalizeUrl(url) { if (!url) return ""; return /^https?:\/\//i.test(url) ? url : "https://" + url; }
+    function getSnapshotLabel(snapshot) { return snapshot.date + (snapshot.memo ? " (" + snapshot.memo + ")" : ""); }
+
+    function applyNumberColor(el, num) {
+      if (num < 0) { el.classList.add("negative"); el.classList.remove("positive"); }
+      else if (num > 0) { el.classList.add("positive"); el.classList.remove("negative"); }
+      else { el.classList.remove("positive", "negative"); }
+    }
+
+    function setDiff(el, show, cur, comp) {
+      if (!show) { el.textContent = ""; return; }
+      const d = cur - comp;
+      el.textContent = (d > 0 ? "+" : "") + formatYen(d);
+      applyNumberColor(el, d);
+    }
+
+    function exportData() {
+      const blob = new Blob([JSON.stringify(appData, null, 2)], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "asset_management_backup.json";
+      a.click();
+    }
+
+    function importData(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function (evt) {
+        try {
+          appData = normalizeData(JSON.parse(evt.target.result));
+          saveData();
+          renderAll();
+          alert("バックアップデータを読み込みました。");
+        } catch (err) {
+          alert("不正なファイル形式です。");
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    function renderTrendOptions() {
+      elements.trendMetric.innerHTML = "";
+      const metrics = [{ v: "netWorth", t: "純資産" }, { v: "assets", t: "資産合計" }, { v: "liabilities", t: "負債合計" }];
+      metrics.forEach(function (m) {
+        const opt = document.createElement("option");
+        opt.value = m.v; opt.textContent = m.t;
+        elements.trendMetric.appendChild(opt);
+      });
+    }
+
+    function drawTrend() {
+      const canvas = elements.trendCanvas;
+      const ctx = canvas.getContext("2d");
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.font = "14px sans-serif";
+      ctx.fillStyle = "var(--muted)";
+      ctx.textAlign = "center";
+      ctx.fillText("（グラフ描画ロジック：必要に応じて Chart.js 等と連携してください）", canvas.width / 2, canvas.height / 2);
+    }
   </script>
 </body>
 </html>
