@@ -109,7 +109,7 @@
     .summary-diff { margin-top: 3px; font-size: 12px; color: var(--muted); }
     .positive { color: var(--text); }
     .negative { color: var(--red); }
-    #snapshotSelect { font-weight: 700; }
+    #snapshotSelect { font-weight: 700; font-size: 15px; }
     .sheet { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: start; }
 
     section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
@@ -132,6 +132,19 @@
     .link-item:last-child { border-bottom: 0; }
     .link-item a { color: var(--blue); word-break: break-all; text-decoration: underline; }
     .hidden { display: none; }
+    .app-lock { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(244,246,248,.96); }
+    .lock-card { width: min(100%, 360px); padding: 24px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 12px 30px rgba(31,41,51,.12); }
+    .lock-card h2 { margin: 0 0 8px; font-size: 18px; }
+    .lock-card p { margin: 0 0 14px; color: var(--muted); }
+    .lock-row { display: flex; gap: 8px; }
+    .lock-row input { text-align: center; font-size: 20px; letter-spacing: .22em; }
+    .lock-error { min-height: 20px; margin-top: 8px; color: var(--red); font-size: 12px; }
+    .trend-wrap { max-width: 1040px; margin: 0 auto; }
+    .trend-controls { display: grid; grid-template-columns: minmax(220px, 420px); gap: 8px; margin-bottom: 10px; }
+    .trend-card { padding: 14px; }
+    .trend-title { margin: 0 0 4px; font-size: 16px; }
+    .trend-note { margin: 0 0 12px; color: var(--muted); font-size: 12px; }
+    #trendCanvas { display: block; width: 100%; height: 360px; }
 
     @media (max-width: 900px) {
       .toolbar, .meta, .compare-bar, .summary, .sheet, .link-form, .link-item { grid-template-columns: 1fr; }
@@ -146,10 +159,20 @@
       section { overflow-x: auto; -webkit-overflow-scrolling: touch; }
       section table { min-width: 590px; }
       .drag-handle { width: 32px; height: 32px; }
+      .trend-controls { grid-template-columns: 1fr; }
+      #trendCanvas { height: 300px; }
     }
   </style>
 </head>
 <body>
+  <div id="appLock" class="app-lock">
+    <div class="lock-card">
+      <h2>個人資産管理</h2>
+      <p>4桁のパスコードを入力してください。</p>
+      <div class="lock-row"><input id="passcodeInput" type="password" inputmode="numeric" maxlength="4" autocomplete="off" aria-label="パスコード"><button id="unlockBtn" class="primary">開く</button></div>
+      <div id="lockError" class="lock-error"></div>
+    </div>
+  </div>
   <header id="appHeader">
     <h1>個人資産管理</h1>
     <div class="toolbar">
@@ -157,6 +180,7 @@
       <button id="addSnapshotBtn" class="primary">新しい表を追加</button>
       <button id="deleteSnapshotBtn" class="danger">表を削除</button>
       <button id="openUrlPageBtn" class="orange">URL一覧</button>
+      <button id="openTrendPageBtn">資産推移</button>
       <button id="exportBtn">バックアップ出力</button>
       <button id="importBtn">バックアップ読込</button>
       <input id="importFile" class="hidden" type="file" accept="application/json">
@@ -170,6 +194,11 @@
   <header id="urlHeader" class="hidden">
     <h1>URL一覧</h1>
     <div class="url-toolbar"><button id="backToAppBtn" class="primary">資産管理に戻る</button></div>
+  </header>
+
+  <header id="trendHeader" class="hidden">
+    <h1>資産推移</h1>
+    <div class="url-toolbar"><button id="backFromTrendBtn" class="primary">資産管理に戻る</button></div>
   </header>
 
   <main id="appPage">
@@ -207,6 +236,17 @@
     </div>
   </main>
 
+  <main id="trendPage" class="hidden">
+    <div class="trend-wrap">
+      <section class="trend-card">
+        <h2 class="trend-title">資産推移グラフ</h2>
+        <p class="trend-note">表の日付順に推移を表示します。項目がない日付は0円として扱います。</p>
+        <div class="trend-controls"><select id="trendMetric"></select></div>
+        <canvas id="trendCanvas" aria-label="資産推移グラフ"></canvas>
+      </section>
+    </div>
+  </main>
+
   <main id="urlPage" class="hidden">
     <div class="url-page-wrap">
       <section>
@@ -231,24 +271,28 @@
     let dragState = null;
 
     const elements = {
-      appHeader: document.getElementById("appHeader"), urlHeader: document.getElementById("urlHeader"), appPage: document.getElementById("appPage"), urlPage: document.getElementById("urlPage"),
-      snapshotSelect: document.getElementById("snapshotSelect"), addSnapshotBtn: document.getElementById("addSnapshotBtn"), deleteSnapshotBtn: document.getElementById("deleteSnapshotBtn"), openUrlPageBtn: document.getElementById("openUrlPageBtn"), backToAppBtn: document.getElementById("backToAppBtn"), exportBtn: document.getElementById("exportBtn"), importBtn: document.getElementById("importBtn"), importFile: document.getElementById("importFile"),
+      appHeader: document.getElementById("appHeader"), urlHeader: document.getElementById("urlHeader"), trendHeader: document.getElementById("trendHeader"), appPage: document.getElementById("appPage"), urlPage: document.getElementById("urlPage"), trendPage: document.getElementById("trendPage"),
+      snapshotSelect: document.getElementById("snapshotSelect"), addSnapshotBtn: document.getElementById("addSnapshotBtn"), deleteSnapshotBtn: document.getElementById("deleteSnapshotBtn"), openUrlPageBtn: document.getElementById("openUrlPageBtn"), openTrendPageBtn: document.getElementById("openTrendPageBtn"), backToAppBtn: document.getElementById("backToAppBtn"), backFromTrendBtn: document.getElementById("backFromTrendBtn"), exportBtn: document.getElementById("exportBtn"), importBtn: document.getElementById("importBtn"), importFile: document.getElementById("importFile"),
       dateInput: document.getElementById("dateInput"), memoInput: document.getElementById("memoInput"), showCompareInput: document.getElementById("showCompareInput"), compareSelect: document.getElementById("compareSelect"), saveStatus: document.getElementById("saveStatus"),
       assetTotal: document.getElementById("assetTotal"), liabilityTotal: document.getElementById("liabilityTotal"), netWorth: document.getElementById("netWorth"), assetTotalDiff: document.getElementById("assetTotalDiff"), liabilityTotalDiff: document.getElementById("liabilityTotalDiff"), netWorthDiff: document.getElementById("netWorthDiff"),
       assetBody: document.getElementById("assetBody"), liabilityBody: document.getElementById("liabilityBody"), addAssetBtn: document.getElementById("addAssetBtn"), addLiabilityBtn: document.getElementById("addLiabilityBtn"), assetTableTotal: document.getElementById("assetTableTotal"), liabilityTableTotal: document.getElementById("liabilityTableTotal"), assetTableDiff: document.getElementById("assetTableDiff"), liabilityTableDiff: document.getElementById("liabilityTableDiff"),
-      linkNameInput: document.getElementById("linkNameInput"), linkUrlInput: document.getElementById("linkUrlInput"), addLinkBtn: document.getElementById("addLinkBtn"), linkList: document.getElementById("linkList")
+      linkNameInput: document.getElementById("linkNameInput"), linkUrlInput: document.getElementById("linkUrlInput"), addLinkBtn: document.getElementById("addLinkBtn"), linkList: document.getElementById("linkList"), trendMetric: document.getElementById("trendMetric"), trendCanvas: document.getElementById("trendCanvas"), appLock: document.getElementById("appLock"), passcodeInput: document.getElementById("passcodeInput"), unlockBtn: document.getElementById("unlockBtn"), lockError: document.getElementById("lockError")
     };
 
     ensureInitialSnapshot();
     registerEvents();
     renderAll();
+    setupLock();
 
     function registerEvents() {
       elements.snapshotSelect.addEventListener("change", function () { appData.currentSnapshotId = this.value; saveData(); renderAll(); });
       elements.addSnapshotBtn.addEventListener("click", addSnapshot);
       elements.deleteSnapshotBtn.addEventListener("click", deleteCurrentSnapshot);
       elements.openUrlPageBtn.addEventListener("click", showUrlPage);
+      elements.openTrendPageBtn.addEventListener("click", showTrendPage);
       elements.backToAppBtn.addEventListener("click", showAppPage);
+      elements.backFromTrendBtn.addEventListener("click", showAppPage);
+      elements.trendMetric.addEventListener("change", drawTrend);
       elements.dateInput.addEventListener("input", function () { const snapshot = getCurrentSnapshot(); snapshot.date = this.value; saveData(); renderSnapshotSelect(); });
       elements.memoInput.addEventListener("input", function () { getCurrentSnapshot().memo = this.value; saveData(); renderSnapshotSelect(); });
       elements.showCompareInput.addEventListener("change", function () { appData.showCompare = this.checked; saveData(); updateCalculations(); });
@@ -289,8 +333,9 @@
     function getToday() { const date = new Date(); return date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0") + "-" + String(date.getDate()).padStart(2, "0"); }
     function getCurrentSnapshot() { return appData.snapshots.find(function (snapshot) { return snapshot.id === appData.currentSnapshotId; }); }
     function getCompareSnapshot() { if (!appData.compareSnapshotId) return null; return appData.snapshots.find(function (snapshot) { return snapshot.id === appData.compareSnapshotId; }) || null; }
-    function showUrlPage() { elements.appHeader.classList.add("hidden"); elements.appPage.classList.add("hidden"); elements.urlHeader.classList.remove("hidden"); elements.urlPage.classList.remove("hidden"); renderLinks(); }
-    function showAppPage() { elements.urlHeader.classList.add("hidden"); elements.urlPage.classList.add("hidden"); elements.appHeader.classList.remove("hidden"); elements.appPage.classList.remove("hidden"); renderAll(); }
+    function showUrlPage() { elements.appHeader.classList.add("hidden"); elements.appPage.classList.add("hidden"); elements.trendHeader.classList.add("hidden"); elements.trendPage.classList.add("hidden"); elements.urlHeader.classList.remove("hidden"); elements.urlPage.classList.remove("hidden"); renderLinks(); }
+    function showTrendPage() { elements.appHeader.classList.add("hidden"); elements.appPage.classList.add("hidden"); elements.urlHeader.classList.add("hidden"); elements.urlPage.classList.add("hidden"); elements.trendHeader.classList.remove("hidden"); elements.trendPage.classList.remove("hidden"); renderTrendOptions(); drawTrend(); }
+    function showAppPage() { elements.urlHeader.classList.add("hidden"); elements.urlPage.classList.add("hidden"); elements.trendHeader.classList.add("hidden"); elements.trendPage.classList.add("hidden"); elements.appHeader.classList.remove("hidden"); elements.appPage.classList.remove("hidden"); renderAll(); }
     function addSnapshot() { const current = getCurrentSnapshot(); const newSnapshot = current ? { id: createId(), date: getToday(), memo: "", assets: current.assets.map(function (item) { return { id: createId(), name: item.name, amount: item.amount }; }), liabilities: current.liabilities.map(function (item) { return { id: createId(), name: item.name, amount: item.amount }; }) } : createBlankSnapshot(); appData.snapshots.push(newSnapshot); appData.currentSnapshotId = newSnapshot.id; appData.compareSnapshotId = current ? current.id : ""; saveData(); renderAll(); }
     function deleteCurrentSnapshot() { const current = getCurrentSnapshot(); if (!current) return; if (!confirm("「" + getSnapshotLabel(current) + "」を削除しますか？")) return; appData.snapshots = appData.snapshots.filter(function (snapshot) { return snapshot.id !== current.id; }); if (appData.snapshots.length === 0) appData.snapshots.push(createBlankSnapshot()); appData.currentSnapshotId = appData.snapshots[appData.snapshots.length - 1].id; if (appData.compareSnapshotId === current.id) appData.compareSnapshotId = ""; saveData(); renderAll(); }
     function addItem(type) { const snapshot = getCurrentSnapshot(); if (!snapshot) return; snapshot[type].push({ id: createId(), name: "", amount: 0 }); saveData(); renderItems(); updateCalculations(); }
@@ -323,6 +368,11 @@
     function formatInputNumber(value) { return Number(value || 0).toLocaleString("ja-JP"); }
     function formatYen(value) { const number = Number(value || 0); const sign = number < 0 ? "-" : ""; return sign + Math.abs(number).toLocaleString("ja-JP") + "円"; }
     function getSnapshotLabel(snapshot) { const memo = snapshot.memo.trim(); return snapshot.date + (memo ? " / " + memo : ""); }
+    function setupLock() { if (sessionStorage.getItem("assetManagementUnlocked") === "1") { elements.appLock.classList.add("hidden"); return; } elements.passcodeInput.focus(); elements.unlockBtn.addEventListener("click", unlockApp); elements.passcodeInput.addEventListener("keydown", function (event) { if (event.key === "Enter") unlockApp(); }); }
+    function unlockApp() { if (elements.passcodeInput.value === "7979") { sessionStorage.setItem("assetManagementUnlocked", "1"); elements.appLock.classList.add("hidden"); elements.lockError.textContent = ""; return; } elements.lockError.textContent = "パスコードが違います。"; elements.passcodeInput.value = ""; elements.passcodeInput.focus(); }
+    function renderTrendOptions() { const previous = elements.trendMetric.value; const options = [{ value: "assets-total", label: "資産合計" }, { value: "liabilities-total", label: "負債合計" }, { value: "net-worth", label: "純資産" }]; const names = { assets: new Set(), liabilities: new Set() }; appData.snapshots.forEach(function (snapshot) { ["assets", "liabilities"].forEach(function (type) { snapshot[type].forEach(function (item) { if (item.name.trim()) names[type].add(item.name.trim()); }); }); }); ["assets", "liabilities"].forEach(function (type) { Array.from(names[type]).sort().forEach(function (name) { options.push({ value: type + ":" + name, label: (type === "assets" ? "資産：" : "負債：") + name }); }); }); elements.trendMetric.innerHTML = options.map(function (option) { return "<option value=\"" + escapeAttribute(option.value) + "\">" + escapeHtml(option.label) + "</option>"; }).join(""); elements.trendMetric.value = options.some(function (option) { return option.value === previous; }) ? previous : "assets-total"; }
+    function getTrendValue(snapshot, key) { if (key === "assets-total") return sumItems(snapshot.assets); if (key === "liabilities-total") return sumItems(snapshot.liabilities); if (key === "net-worth") return sumItems(snapshot.assets) - sumItems(snapshot.liabilities); const parts = key.split(":"); const type = parts[0]; const name = parts.slice(1).join(":"); return snapshot[type].filter(function (item) { return item.name.trim() === name; }).reduce(function (total, item) { return total + Number(item.amount || 0); }, 0); }
+    function drawTrend() { const canvas = elements.trendCanvas; if (!canvas || elements.trendPage.classList.contains("hidden")) return; const snapshots = appData.snapshots.slice().sort(function (a, b) { return a.date.localeCompare(b.date) || a.id.localeCompare(b.id); }); const rect = canvas.getBoundingClientRect(); const width = Math.max(280, Math.round(rect.width)); const height = Math.max(240, Math.round(rect.height)); const ratio = window.devicePixelRatio || 1; canvas.width = width * ratio; canvas.height = height * ratio; const ctx = canvas.getContext("2d"); ctx.setTransform(ratio, 0, 0, ratio, 0, 0); ctx.clearRect(0, 0, width, height); if (!snapshots.length) return; const points = snapshots.map(function (snapshot) { return { date: snapshot.date, value: getTrendValue(snapshot, elements.trendMetric.value) }; }); const values = points.map(function (point) { return point.value; }); let min = Math.min.apply(null, values); let max = Math.max.apply(null, values); if (min === max) { const padding = Math.max(1, Math.abs(max) * .1); min -= padding; max += padding; } const pad = { left: 66, right: 16, top: 22, bottom: 42 }; const chartWidth = width - pad.left - pad.right; const chartHeight = height - pad.top - pad.bottom; const x = function (index) { return pad.left + (points.length === 1 ? chartWidth / 2 : index / (points.length - 1) * chartWidth); }; const y = function (value) { return pad.top + (max - value) / (max - min) * chartHeight; }; ctx.font = "12px system-ui"; ctx.strokeStyle = "#d9dee5"; ctx.fillStyle = "#6b7280"; ctx.lineWidth = 1; for (let i = 0; i <= 4; i += 1) { const value = max - (max - min) * i / 4; const yy = pad.top + chartHeight * i / 4; ctx.beginPath(); ctx.moveTo(pad.left, yy); ctx.lineTo(width - pad.right, yy); ctx.stroke(); ctx.fillText(formatYen(value), 4, yy + 4); } ctx.strokeStyle = "#2563eb"; ctx.lineWidth = 2; ctx.beginPath(); points.forEach(function (point, index) { if (index === 0) ctx.moveTo(x(index), y(point.value)); else ctx.lineTo(x(index), y(point.value)); }); ctx.stroke(); points.forEach(function (point, index) { ctx.fillStyle = point.value < 0 ? "#b36a6a" : "#2563eb"; ctx.beginPath(); ctx.arc(x(index), y(point.value), 4, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = "#6b7280"; ctx.textAlign = "center"; ctx.fillText(point.date.slice(5).replace("-", "/"), x(index), height - 16); }); ctx.textAlign = "start"; }
     function normalizeUrl(url) { const trimmed = String(url).trim(); return /^https?:\/\//i.test(trimmed) ? trimmed : "https://" + trimmed; }
     function exportData() { const json = JSON.stringify(appData, null, 2); const blob = new Blob([json], { type: "application/json" }); const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = "personal-balance-sheet-backup.json"; document.body.appendChild(link); link.click(); document.body.removeChild(link); URL.revokeObjectURL(url); }
     function importData(event) { const file = event.target.files[0]; if (!file) return; if (!confirm("現在のデータをバックアップファイルの内容で上書きしますか？")) return; const reader = new FileReader(); reader.onload = function () { try { appData = normalizeData(JSON.parse(reader.result)); ensureInitialSnapshot(); saveData(); showAppPage(); alert("バックアップを読み込みました。"); } catch (error) { alert("バックアップファイルを読み込めませんでした。"); } }; reader.onerror = function () { alert("ファイルの読み込みに失敗しました。"); }; reader.readAsText(file); }
@@ -331,6 +381,3 @@
   </script>
 </body>
 </html>
-
-
-
