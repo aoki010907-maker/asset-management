@@ -169,7 +169,47 @@
       display: block;
       width: 0;
     }
+    .login-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      background: rgba(15, 23, 42, 0.5);
+    }
 
+    .login-card {
+      width: min(100%, 360px);
+      padding: 22px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      box-shadow: 0 18px 45px rgba(15, 23, 42, 0.25);
+    }
+
+    .login-card h2 {
+      margin: 0 0 8px;
+      font-size: 17px;
+    }
+
+    .login-card p {
+      margin: 0 0 14px;
+      color: var(--muted);
+    }
+
+    .login-card button {
+      width: 100%;
+      margin-top: 8px;
+    }
+
+    .login-error {
+      min-height: 18px;
+      margin-top: 6px;
+      color: var(--red);
+      font-size: 12px;
+    }
     @media (max-width: 900px) {
       .toolbar, .meta, .compare-bar, .summary, .sheet, .link-form, .link-item { grid-template-columns: 1fr; }
       main { padding: 10px; }
@@ -189,6 +229,15 @@
   </style>
 </head>
 <body>
+  <div id="loginOverlay" class="login-overlay">
+  <form id="loginForm" class="login-card">
+    <h2>パスコード入力</h2>
+    <p>続行するにはパスコードを入力してください。</p>
+    <input id="passcodeInput" type="password" inputmode="numeric" autocomplete="current-password" maxlength="4" aria-label="パスコード">
+    <div id="loginError" class="login-error" aria-live="polite"></div>
+    <button type="submit" class="primary">ログイン</button>
+  </form>
+</div>
   <header id="appHeader">
     <h1>個人資産管理</h1>
     <div class="toolbar">
@@ -285,25 +334,93 @@
   </main>
 
   <script>
-    const STORAGE_KEY = "personalBalanceSheetAppDataV1";
-    const defaultData = { currentSnapshotId: "", compareSnapshotId: "", showCompare: true, snapshots: [], links: [] };
-    let appData = loadData();
-    let dragState = null;
-    let clickTargets = [];
+const STORAGE_KEY = "personalBalanceSheetAppDataV1";
+const PASSCODE_SESSION_KEY = "personalBalanceSheetAppPasscodeUntilV1";
+const PASSCODE = "7979";
+const PASSCODE_SESSION_MS = 5 * 60 * 1000;
+const defaultData = { currentSnapshotId: "", compareSnapshotId: "", showCompare: true, snapshots: [], links: [] };
+let appData = loadData();
+let dragState = null;
+let clickTargets = [];
+let activeTooltipPoint = null;
+let loginTimer = null;
+let appInitialized = false;
 
-    const elements = {
-      appHeader: document.getElementById("appHeader"), urlHeader: document.getElementById("urlHeader"), trendHeader: document.getElementById("trendHeader"), appPage: document.getElementById("appPage"), urlPage: document.getElementById("urlPage"), trendPage: document.getElementById("trendPage"),
-      snapshotSelect: document.getElementById("snapshotSelect"), addSnapshotBtn: document.getElementById("addSnapshotBtn"), deleteSnapshotBtn: document.getElementById("deleteSnapshotBtn"), openUrlPageBtn: document.getElementById("openUrlPageBtn"), openTrendPageBtn: document.getElementById("openTrendPageBtn"), backToAppBtn: document.getElementById("backToAppBtn"), backFromTrendBtn: document.getElementById("backFromTrendBtn"), exportBtn: document.getElementById("exportBtn"), importBtn: document.getElementById("importBtn"), importFile: document.getElementById("importFile"),
-      dateInput: document.getElementById("dateInput"), memoInput: document.getElementById("memoInput"), showCompareInput: document.getElementById("showCompareInput"), compareSelect: document.getElementById("compareSelect"), saveStatus: document.getElementById("saveStatus"),
-      assetTotal: document.getElementById("assetTotal"), liabilityTotal: document.getElementById("liabilityTotal"), netWorth: document.getElementById("netWorth"), assetTotalDiff: document.getElementById("assetTotalDiff"), liabilityTotalDiff: document.getElementById("liabilityTotalDiff"), netWorthDiff: document.getElementById("netWorthDiff"),
-      assetBody: document.getElementById("assetBody"), liabilityBody: document.getElementById("liabilityBody"), addAssetBtn: document.getElementById("addAssetBtn"), addLiabilityBtn: document.getElementById("addLiabilityBtn"), assetTableTotal: document.getElementById("assetTableTotal"), liabilityTableTotal: document.getElementById("liabilityTableTotal"), assetTableDiff: document.getElementById("assetTableDiff"), liabilityTableDiff: document.getElementById("liabilityTableDiff"),
-      linkNameInput: document.getElementById("linkNameInput"), linkUrlInput: document.getElementById("linkUrlInput"), addLinkBtn: document.getElementById("addLinkBtn"), linkList: document.getElementById("linkList"), trendMetric: document.getElementById("trendMetric"), trendMaxSelect: document.getElementById("trendMaxSelect"), trendCanvas: document.getElementById("trendCanvas"),
-      trendTooltip: document.getElementById("trendTooltip")
-    };
+const elements = {
+  appHeader: document.getElementById("appHeader"), urlHeader: document.getElementById("urlHeader"), trendHeader: document.getElementById("trendHeader"), appPage: document.getElementById("appPage"), urlPage: document.getElementById("urlPage"), trendPage: document.getElementById("trendPage"),
+  snapshotSelect: document.getElementById("snapshotSelect"), addSnapshotBtn: document.getElementById("addSnapshotBtn"), deleteSnapshotBtn: document.getElementById("deleteSnapshotBtn"), openUrlPageBtn: document.getElementById("openUrlPageBtn"), openTrendPageBtn: document.getElementById("openTrendPageBtn"), backToAppBtn: document.getElementById("backToAppBtn"), backFromTrendBtn: document.getElementById("backFromTrendBtn"), exportBtn: document.getElementById("exportBtn"), importBtn: document.getElementById("importBtn"), importFile: document.getElementById("importFile"),
+  dateInput: document.getElementById("dateInput"), memoInput: document.getElementById("memoInput"), showCompareInput: document.getElementById("showCompareInput"), compareSelect: document.getElementById("compareSelect"), saveStatus: document.getElementById("saveStatus"),
+  assetTotal: document.getElementById("assetTotal"), liabilityTotal: document.getElementById("liabilityTotal"), netWorth: document.getElementById("netWorth"), assetTotalDiff: document.getElementById("assetTotalDiff"), liabilityTotalDiff: document.getElementById("liabilityTotalDiff"), netWorthDiff: document.getElementById("netWorthDiff"),
+  assetBody: document.getElementById("assetBody"), liabilityBody: document.getElementById("liabilityBody"), addAssetBtn: document.getElementById("addAssetBtn"), addLiabilityBtn: document.getElementById("addLiabilityBtn"), assetTableTotal: document.getElementById("assetTableTotal"), liabilityTableTotal: document.getElementById("liabilityTableTotal"), assetTableDiff: document.getElementById("assetTableDiff"), liabilityTableDiff: document.getElementById("liabilityTableDiff"),
+  linkNameInput: document.getElementById("linkNameInput"), linkUrlInput: document.getElementById("linkUrlInput"), addLinkBtn: document.getElementById("addLinkBtn"), linkList: document.getElementById("linkList"), trendMetric: document.getElementById("trendMetric"), trendMaxSelect: document.getElementById("trendMaxSelect"), trendCanvas: document.getElementById("trendCanvas"),
+  trendTooltip: document.getElementById("trendTooltip"),
+  loginOverlay: document.getElementById("loginOverlay"), loginForm: document.getElementById("loginForm"), passcodeInput: document.getElementById("passcodeInput"), loginError: document.getElementById("loginError")
+};
 
-    ensureInitialSnapshot();
-    registerEvents();
-    renderAll();
+registerLoginEvents();
+
+if (hasValidPasscodeSession()) {
+  initializeApp();
+  schedulePasscodeLock();
+} else {
+  showLogin();
+}
+
+function initializeApp() {
+  if (appInitialized) return;
+  appInitialized = true;
+  ensureInitialSnapshot();
+  registerEvents();
+  renderAll();
+}
+
+function registerLoginEvents() {
+  elements.loginForm.addEventListener("submit", function (event) {
+    event.preventDefault();
+
+    if (elements.passcodeInput.value !== PASSCODE) {
+      elements.loginError.textContent = "パスコードが違います。";
+      elements.passcodeInput.select();
+      return;
+    }
+
+    localStorage.setItem(PASSCODE_SESSION_KEY, String(Date.now() + PASSCODE_SESSION_MS));
+    elements.loginError.textContent = "";
+    elements.loginOverlay.classList.add("hidden");
+    initializeApp();
+    schedulePasscodeLock();
+  });
+}
+
+function hasValidPasscodeSession() {
+  const expiresAt = Number(localStorage.getItem(PASSCODE_SESSION_KEY));
+  return Number.isFinite(expiresAt) && Date.now() < expiresAt;
+}
+
+function schedulePasscodeLock() {
+  if (loginTimer) window.clearTimeout(loginTimer);
+
+  const expiresAt = Number(localStorage.getItem(PASSCODE_SESSION_KEY));
+  const remaining = expiresAt - Date.now();
+
+  if (remaining <= 0) {
+    localStorage.removeItem(PASSCODE_SESSION_KEY);
+    showLogin();
+    return;
+  }
+
+  loginTimer = window.setTimeout(function () {
+    localStorage.removeItem(PASSCODE_SESSION_KEY);
+    showLogin();
+  }, remaining);
+}
+
+function showLogin() {
+  elements.passcodeInput.value = "";
+  elements.loginError.textContent = "";
+  elements.loginOverlay.classList.remove("hidden");
+  elements.passcodeInput.focus();
+}
 
     function registerEvents() {
       elements.snapshotSelect.addEventListener("change", function () { appData.currentSnapshotId = this.value; saveData(); renderAll(); });
@@ -538,26 +655,48 @@
       if (currentSelection && validLimits.includes(currentSelection)) elements.trendMaxSelect.value = currentSelection;
       else elements.trendMaxSelect.value = validLimits[0];
     }
-    function hideTooltip() { elements.trendTooltip.style.display = "none"; }
-    function handleCanvasClick(event) {
-      const canvas = elements.trendCanvas;
-      const rect = canvas.getBoundingClientRect();
-      const clickX = event.clientX - rect.left;
-      const clickY = event.clientY - rect.top;
-      let hitPoint = null;
-      const hitRadius = 15;
-      for (let i = 0; i < clickTargets.length; i++) {
-        const pt = clickTargets[i];
-        const dist = Math.sqrt(Math.pow(clickX - pt.x, 2) + Math.pow(clickY - pt.y, 2));
-        if (dist <= hitRadius) { hitPoint = pt; break; }
-      }
-      if (hitPoint) {
-        elements.trendTooltip.innerHTML = "<div>" + escapeHtml(hitPoint.date) + "</div><div style='color: #60a5fa; margin-top: 2px;'>" + hitPoint.value.toLocaleString("ja-JP") + "円</div>";
-        elements.trendTooltip.style.left = hitPoint.x + "px";
-        elements.trendTooltip.style.top = hitPoint.y + "px";
-        elements.trendTooltip.style.display = "block";
-      } else hideTooltip();
+function hideTooltip() {
+  activeTooltipPoint = null;
+  elements.trendTooltip.style.display = "none";
+}
+
+function handleCanvasClick(event) {
+  const canvas = elements.trendCanvas;
+  const canvasRect = canvas.getBoundingClientRect();
+  const cardRect = canvas.closest(".trend-card").getBoundingClientRect();
+  const clickX = event.clientX - canvasRect.left;
+  const clickY = event.clientY - canvasRect.top;
+  let hitPoint = null;
+  const hitRadius = 15;
+
+  for (let i = 0; i < clickTargets.length; i++) {
+    const pt = clickTargets[i];
+    const dist = Math.sqrt(Math.pow(clickX - pt.x, 2) + Math.pow(clickY - pt.y, 2));
+    if (dist <= hitRadius) {
+      hitPoint = pt;
+      break;
     }
+  }
+
+  if (!hitPoint) {
+    hideTooltip();
+    return;
+  }
+
+  if (activeTooltipPoint === hitPoint) {
+    hideTooltip();
+    return;
+  }
+
+  activeTooltipPoint = hitPoint;
+  elements.trendTooltip.innerHTML =
+    "<div>" + escapeHtml(hitPoint.date) + "</div>" +
+    "<div style='color: #60a5fa; margin-top: 2px;'>" +
+    hitPoint.value.toLocaleString("ja-JP") + "円</div>";
+  elements.trendTooltip.style.left = (canvasRect.left - cardRect.left + hitPoint.x) + "px";
+  elements.trendTooltip.style.top = (canvasRect.top - cardRect.top + hitPoint.y) + "px";
+  elements.trendTooltip.style.display = "block";
+}
     function drawTrend() {
       const canvas = elements.trendCanvas;
       const rect = canvas.getBoundingClientRect();
