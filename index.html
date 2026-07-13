@@ -571,7 +571,6 @@
       validLimits.forEach(function(L) {
         const opt = document.createElement("option");
         opt.value = L;
-        /* 🛠️ プルダウン選択肢も分かりやすく3桁カンマ表記（~円）に変更 */
         opt.textContent = "上限: " + L.toLocaleString("ja-JP") + "円";
         elements.trendMaxSelect.appendChild(opt);
       });
@@ -601,7 +600,7 @@
 
       if (appData.snapshots.length === 0) {
         ctx.font = "13px sans-serif";
-        ctx.fillStyle = "var(--muted)";
+        ctx.fillStyle = "#334155"; /* 🛠️ 「データがありません」の文字を濃いめに修正 */
         ctx.textAlign = "center";
         ctx.fillText("データがありません", width / 2, height / 2);
         return;
@@ -633,7 +632,6 @@
         return { date: s.date, value: val };
       });
 
-      /* 🛠️ カンマ表記で文字幅が広がるため、左の余白を90から110に拡張 */
       const paddingLeft = 110;
       const paddingRight = 45;
       const paddingTop = 45;
@@ -652,10 +650,9 @@
       const valRange = selectedMax - minVal;
       const totalDivisions = Math.round(valRange / step);
 
-      ctx.strokeStyle = "#f1f5f9";
       ctx.lineWidth = 1;
-      ctx.fillStyle = "#94a3b8";
-      ctx.font = "500 11px system-ui, sans-serif";
+      ctx.fillStyle = "#334155"; /* 🛠️ 金額や日付の文字色をグレーから濃い黒（スレート）に変更 */
+      ctx.font = "bold 11px system-ui, sans-serif"; /* 🛠️ 文字を少し太くしてさらに視認性をアップ */
       ctx.textAlign = "right";
       ctx.textBaseline = "middle";
 
@@ -669,15 +666,14 @@
         ctx.lineTo(width - paddingRight, y);
         
         if (val === 0 && minVal < 0) {
-          ctx.strokeStyle = "#cbd5e1";
+          ctx.strokeStyle = "#475569"; /* 🛠️ 基準線（0円）をしっかりとしたダークグレーに */
           ctx.lineWidth = 1.5;
         } else {
-          ctx.strokeStyle = "#f1f5f9";
+          ctx.strokeStyle = "#e2e8f0"; /* 🛠️ 横の補助線を一段階濃いグレーに変更 */
           ctx.lineWidth = 1;
         }
         ctx.stroke();
         
-        /* 🛠️ Y軸ラベルをすべて「1,000,000円」のカンマ表記（~円）に修正 */
         const label = val.toLocaleString("ja-JP") + "円";
         ctx.fillText(label, paddingLeft - 12, y);
       }
@@ -697,7 +693,8 @@
           }
         });
 
-        ctx.strokeStyle = "var(--blue)";
+        /* 🛠️ グラフのメイン線を淡い色から「ハッキリとした藍色（#0f172a / ダークネイビー）」に変更 */
+        ctx.strokeStyle = "#0f172a"; 
         ctx.lineWidth = 4.5;
         ctx.lineJoin = "round";
         ctx.lineCap = "round";
@@ -709,22 +706,25 @@
           const yRatio = valRange !== 0 ? (p.value - minVal) / valRange : 0.5;
           const y = paddingTop + graphHeight * (1 - yRatio);
 
+          /* 🛠️ プロット点（丸ぽち）の縁取りも濃い藍色に変更 */
           ctx.beginPath();
           ctx.arc(x, y, 4, 0, Math.PI * 2);
           ctx.fillStyle = "#ffffff";
           ctx.fill();
-          ctx.strokeStyle = "var(--blue)";
+          ctx.strokeStyle = "#0f172a";
           ctx.lineWidth = 2.5;
           ctx.stroke();
 
-          ctx.fillStyle = "var(--blue)";
+          /* 🛠️ グラフ上の金額表示の文字を濃い藍色に変更 */
+          ctx.fillStyle = "#0f172a";
           ctx.font = "bold 11px system-ui, sans-serif";
           ctx.textAlign = "center";
           ctx.textBaseline = "bottom";
           ctx.fillText(p.value.toLocaleString("ja-JP") + "円", x, y - 8);
 
-          ctx.fillStyle = "#64748b";
-          ctx.font = "500 11px system-ui, sans-serif";
+          /* 🛠️ X軸（日付）の文字色を濃い目に変更 */
+          ctx.fillStyle = "#334155";
+          ctx.font = "bold 11px system-ui, sans-serif";
           ctx.textAlign = "center";
           ctx.textBaseline = "top";
           
