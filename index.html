@@ -177,7 +177,7 @@
       align-items: center;
       justify-content: center;
       padding: 20px;
-      background: rgba(15, 23, 42, 0.5);
+      background: #ffffff; /* パスコード要求時の背景を真っ白に */
     }
 
     .login-card {
@@ -343,7 +343,7 @@ let appData = loadData();
 let dragState = null;
 let clickTargets = [];
 let activeTooltipPoint = null;
-let loginTimer = null;
+let heartbeatInterval = null; // セッション維持用のタイマー
 let appInitialized = false;
 
 const elements = {
@@ -361,7 +361,7 @@ registerLoginEvents();
 
 if (hasValidPasscodeSession()) {
   initializeApp();
-  schedulePasscodeLock();
+  startHeartbeat(); // 有効な場合はハートビートを開始
 } else {
   showLogin();
 }
@@ -384,11 +384,10 @@ function registerLoginEvents() {
       return;
     }
 
-    localStorage.setItem(PASSCODE_SESSION_KEY, String(Date.now() + PASSCODE_SESSION_MS));
     elements.loginError.textContent = "";
     elements.loginOverlay.classList.add("hidden");
     initializeApp();
-    schedulePasscodeLock();
+    startHeartbeat(); // ログイン成功時にハートビートを開始
   });
 }
 
@@ -397,22 +396,15 @@ function hasValidPasscodeSession() {
   return Number.isFinite(expiresAt) && Date.now() < expiresAt;
 }
 
-function schedulePasscodeLock() {
-  if (loginTimer) window.clearTimeout(loginTimer);
+// ページを開いている間は期限を延長し続ける
+function startHeartbeat() {
+  updateSession();
+  if (heartbeatInterval) clearInterval(heartbeatInterval);
+  heartbeatInterval = setInterval(updateSession, 60000); // 1分ごとにセッションを更新
+}
 
-  const expiresAt = Number(localStorage.getItem(PASSCODE_SESSION_KEY));
-  const remaining = expiresAt - Date.now();
-
-  if (remaining <= 0) {
-    localStorage.removeItem(PASSCODE_SESSION_KEY);
-    showLogin();
-    return;
-  }
-
-  loginTimer = window.setTimeout(function () {
-    localStorage.removeItem(PASSCODE_SESSION_KEY);
-    showLogin();
-  }, remaining);
+function updateSession() {
+  localStorage.setItem(PASSCODE_SESSION_KEY, String(Date.now() + PASSCODE_SESSION_MS));
 }
 
 function showLogin() {
@@ -735,7 +727,11 @@ function handleCanvasClick(event) {
         return { date: s.date, value: val };
       });
       const paddingLeft = 110; const paddingRight = 45; const paddingTop = 45; const paddingBottom = 45;
-      const graphWidth = width - paddingLeft - paddingRight; const graphHeight = height - paddingTop - paddingBottom;
+      const graphWidth = width - paddingLeft - paddingRight; 
+      const graphHeight = height - paddingTop - paddingBottom;
+      const pointPadding = 30; // グラフ左右の余白
+      const availableWidth = graphWidth - (pointPadding * 2);
+      
       let dataMin = points.length > 0 ? Math.min.apply(null, points.map(function(p){ return p.value; })) : 0;
       const selectedMax = parseInt(elements.trendMaxSelect.value, 10) || 1000000;
       const step = selectedMax / 10;
@@ -762,7 +758,7 @@ function handleCanvasClick(event) {
         ctx.beginPath();
         points.forEach(function (p, idx) {
           const xRatio = points.length > 1 ? idx / (points.length - 1) : 0.5;
-          const x = paddingLeft + graphWidth * xRatio;
+          const x = paddingLeft + pointPadding + availableWidth * xRatio;
           const yRatio = valRange !== 0 ? (p.value - minVal) / valRange : 0.5;
           const y = paddingTop + graphHeight * (1 - yRatio);
           if (idx === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
@@ -771,17 +767,16 @@ function handleCanvasClick(event) {
         ctx.strokeStyle = "#0f172a"; ctx.lineWidth = 4.5; ctx.lineJoin = "round"; ctx.lineCap = "round"; ctx.stroke();
         points.forEach(function (p, idx) {
           const xRatio = points.length > 1 ? idx / (points.length - 1) : 0.5;
-          const x = paddingLeft + graphWidth * xRatio;
+          const x = paddingLeft + pointPadding + availableWidth * xRatio;
           const yRatio = valRange !== 0 ? (p.value - minVal) / valRange : 0.5;
           const y = paddingTop + graphHeight * (1 - yRatio);
           ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fillStyle = "#ffffff"; ctx.fill();
           ctx.strokeStyle = "#0f172a"; ctx.lineWidth = 2.5; ctx.stroke();
-          ctx.fillStyle = "#0f172a"; ctx.font = "bold 11px system-ui, sans-serif";
-          ctx.textAlign = "center"; ctx.textBaseline = "bottom"; ctx.fillText(p.value.toLocaleString("ja-JP") + "円", x, y - 8);
           ctx.fillStyle = "#334155"; ctx.textAlign = "center"; ctx.textBaseline = "top";
           let showLabel = true;
           if (points.length > 6) { const skip = Math.ceil(points.length / 5); if (idx % skip !== 0 && idx !== points.length - 1) showLabel = false; }
-          if (showLabel) ctx.fillText(p.date.replace(/^\d{4}-/, ''), x, height - paddingBottom + 12);
+          // 西暦下2桁表記 (YYYY-MM-DD -> YY-MM-DD)
+          if (showLabel) ctx.fillText(p.date.substring(2), x, height - paddingBottom + 12);
         });
       }
     }
