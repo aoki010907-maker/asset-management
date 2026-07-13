@@ -143,10 +143,40 @@
     .lock-error { min-height: 20px; margin-top: 8px; color: var(--red); font-size: 12px; }
     .trend-wrap { max-width: 1040px; margin: 0 auto; }
     .trend-controls { display: grid; grid-template-columns: minmax(150px, 1fr) minmax(150px, 1.2fr); gap: 8px; margin-bottom: 10px; max-width: 540px; }
-    .trend-card { padding: 20px; }
+    .trend-card { padding: 20px; position: relative; }
     .trend-title { margin: 0 0 4px; font-size: 16px; }
     .trend-note { margin: 0 0 20px; color: var(--muted); font-size: 12px; }
-    #trendCanvas { display: block; width: 100%; height: 400px; }
+    #trendCanvas { display: block; width: 100%; height: 400px; cursor: pointer; }
+
+    /* 🛠️ コメント吹き出し（ポップアップ）のスタイル設定 */
+    .graph-tooltip {
+      position: absolute;
+      background: rgba(15, 23, 42, 0.95);
+      color: #ffffff;
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 700;
+      pointer-events: none;
+      white-space: nowrap;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      z-index: 10;
+      display: none;
+      transform: translate(-50%, -100%);
+      margin-top: -12px;
+    }
+    .graph-tooltip::after {
+      content: "";
+      position: absolute;
+      bottom: -5px;
+      left: 50%;
+      transform: translateX(-50%);
+      border-width: 5px 5px 0;
+      border-style: solid;
+      border-color: rgba(15, 23, 42, 0.95) transparent;
+      display: block;
+      width: 0;
+    }
 
     @media (max-width: 900px) {
       .toolbar, .meta, .compare-bar, .summary, .sheet, .link-form, .link-item { grid-template-columns: 1fr; }
@@ -242,29 +272,14 @@
     <div class="trend-wrap">
       <section class="trend-card">
         <h2 class="trend-title">資産推移グラフ</h2>
-        <p class="trend-note">表の日付順に推移を表示します。</p>
+        <p class="trend-note">表の日付順に推移を表示します。点（○）をクリックすると詳細を確認できます。</p>
         <div class="trend-controls">
           <select id="trendMetric"></select>
           <select id="trendMaxSelect"></select>
         </div>
+        <!-- 🛠️ ポップアップ表示用の要素を追加 -->
+        <div id="graphTooltip" class="graph-tooltip"></div>
         <canvas id="trendCanvas" aria-label="資産推移グラフ"></canvas>
-      </section>
-    </div>
-  </main>
-
-  <main id="urlPage" class="hidden">
-    <div class="url-page-wrap">
-      <section>
-        <div class="section-head"><h2>URLを追加</h2></div>
-        <div class="link-form">
-          <input id="linkNameInput" type="text" placeholder="表示名">
-          <input id="linkUrlInput" type="url" placeholder="URL">
-          <button id="addLinkBtn">URLを追加</button>
-        </div>
-      </section>
-      <section>
-        <div class="section-head"><h2>保存済みURL</h2></div>
-        <div id="linkList" class="link-list"></div>
       </section>
     </div>
   </main>
@@ -274,6 +289,7 @@
     const defaultData = { currentSnapshotId: "", compareSnapshotId: "", showCompare: true, snapshots: [], links: [] };
     let appData = loadData();
     let dragState = null;
+    let activeCalculatedPoints = []; // 🛠️ 描画した点の座標を保持する配列
 
     const elements = {
       appHeader: document.getElementById("appHeader"), urlHeader: document.getElementById("urlHeader"), trendHeader: document.getElementById("trendHeader"), appPage: document.getElementById("appPage"), urlPage: document.getElementById("urlPage"), trendPage: document.getElementById("trendPage"),
@@ -281,7 +297,7 @@
       dateInput: document.getElementById("dateInput"), memoInput: document.getElementById("memoInput"), showCompareInput: document.getElementById("showCompareInput"), compareSelect: document.getElementById("compareSelect"), saveStatus: document.getElementById("saveStatus"),
       assetTotal: document.getElementById("assetTotal"), liabilityTotal: document.getElementById("liabilityTotal"), netWorth: document.getElementById("netWorth"), assetTotalDiff: document.getElementById("assetTotalDiff"), liabilityTotalDiff: document.getElementById("liabilityTotalDiff"), netWorthDiff: document.getElementById("netWorthDiff"),
       assetBody: document.getElementById("assetBody"), liabilityBody: document.getElementById("liabilityBody"), addAssetBtn: document.getElementById("addAssetBtn"), addLiabilityBtn: document.getElementById("addLiabilityBtn"), assetTableTotal: document.getElementById("assetTableTotal"), liabilityTableTotal: document.getElementById("liabilityTableTotal"), assetTableDiff: document.getElementById("assetTableDiff"), liabilityTableDiff: document.getElementById("liabilityTableDiff"),
-      linkNameInput: document.getElementById("linkNameInput"), linkUrlInput: document.getElementById("linkUrlInput"), addLinkBtn: document.getElementById("addLinkBtn"), linkList: document.getElementById("linkList"), trendMetric: document.getElementById("trendMetric"), trendMaxSelect: document.getElementById("trendMaxSelect"), trendCanvas: document.getElementById("trendCanvas"), appLock: document.getElementById("appLock"), passcodeInput: document.getElementById("passcodeInput"), unlockBtn: document.getElementById("unlockBtn"), lockError: document.getElementById("lockError")
+      linkNameInput: document.getElementById("linkNameInput"), linkUrlInput: document.getElementById("linkUrlInput"), addLinkBtn: document.getElementById("addLinkBtn"), linkList: document.getElementById("linkList"), trendMetric: document.getElementById("trendMetric"), trendMaxSelect: document.getElementById("trendMaxSelect"), trendCanvas: document.getElementById("trendCanvas"), graphTooltip: document.getElementById("graphTooltip"), appLock: document.getElementById("appLock"), passcodeInput: document.getElementById("passcodeInput"), unlockBtn: document.getElementById("unlockBtn"), lockError: document.getElementById("lockError")
     };
 
     ensureInitialSnapshot();
@@ -297,8 +313,8 @@
       elements.openTrendPageBtn.addEventListener("click", showTrendPage);
       elements.backToAppBtn.addEventListener("click", showAppPage);
       elements.backFromTrendBtn.addEventListener("click", showAppPage);
-      elements.trendMetric.addEventListener("change", function() { updateTrendMaxSelect(); drawTrend(); });
-      elements.trendMaxSelect.addEventListener("change", drawTrend);
+      elements.trendMetric.addEventListener("change", function() { hideTooltip(); updateTrendMaxSelect(); drawTrend(); });
+      elements.trendMaxSelect.addEventListener("change", function() { hideTooltip(); drawTrend(); });
       elements.dateInput.addEventListener("input", function () { const snapshot = getCurrentSnapshot(); snapshot.date = this.value; saveData(); renderSnapshotSelect(); });
       elements.memoInput.addEventListener("input", function () { getCurrentSnapshot().memo = this.value; saveData(); renderSnapshotSelect(); });
       elements.showCompareInput.addEventListener("change", function () { appData.showCompare = this.checked; saveData(); updateCalculations(); });
@@ -324,6 +340,9 @@
       elements.exportBtn.addEventListener("click", exportData);
       elements.importBtn.addEventListener("click", function () { elements.importFile.value = ""; elements.importFile.click(); });
       elements.importFile.addEventListener("change", importData);
+      
+      /* 🛠 * キャンバスクリックイベント（点を判定する処理）を追加 */
+      elements.trendCanvas.addEventListener("click", handleCanvasClick);
     }
 
     function cloneDefaultData() { return JSON.parse(JSON.stringify(defaultData)); }
@@ -342,6 +361,7 @@
     function showUrlPage() { elements.appHeader.classList.add("hidden"); elements.appPage.classList.add("hidden"); elements.trendHeader.classList.add("hidden"); elements.trendPage.classList.add("hidden"); elements.urlHeader.classList.remove("hidden"); elements.urlPage.classList.remove("hidden"); renderLinks(); }
     function showTrendPage() { 
       elements.appHeader.classList.add("hidden"); elements.appPage.classList.add("hidden"); elements.urlHeader.classList.add("hidden"); elements.urlPage.classList.add("hidden"); elements.trendHeader.classList.remove("hidden"); elements.trendPage.classList.remove("hidden"); 
+      hideTooltip();
       renderTrendOptions(); 
       updateTrendMaxSelect();
       drawTrend(); 
@@ -582,6 +602,48 @@
       }
     }
 
+    /* 🛠️ コメント表示（吹き出し）を非表示にする共通関数 */
+    function hideTooltip() {
+      elements.graphTooltip.style.display = "none";
+    }
+
+    /* 🛠️ キャンバスクリック時の当たり判定処理 */
+    function handleCanvasClick(event) {
+      const canvas = elements.trendCanvas;
+      const rect = canvas.getBoundingClientRect();
+      
+      // クリックされた正確な相対座標 (CSSピクセル単位)
+      const mouseX = event.clientX - rect.left;
+      const mouseY = event.clientY - rect.top;
+
+      let closestPoint = null;
+      let minDistance = 20; // 判定のクリック許容範囲（20ピクセル以内）
+
+      activeCalculatedPoints.forEach(function (pt) {
+        const dx = mouseX - pt.x;
+        const dy = mouseY - pt.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        if (distance < minDistance) {
+          minDistance = distance;
+          closestPoint = pt;
+        }
+      });
+
+      if (closestPoint) {
+        // ポップアップ（コメント形式）を表示して位置を調整
+        const tooltip = elements.graphTooltip;
+        const displayDate = closestPoint.date.replace(/^(\d{4})-(0?)([1-9]|1[0-2])-(0?)([1-9]|[12]\d|3[01])$/, '$3月$5日');
+        tooltip.innerHTML = displayDate + "<br>" + closestPoint.value.toLocaleString("ja-JP") + "円";
+        tooltip.style.display = "block";
+        tooltip.style.left = closestPoint.x + "px";
+        tooltip.style.top = closestPoint.y + "px";
+      } else {
+        // 点以外をクリックした場合は吹き出しを閉じる
+        hideTooltip();
+      }
+    }
+
     function drawTrend() {
       const canvas = elements.trendCanvas;
       const rect = canvas.getBoundingClientRect();
@@ -597,10 +659,11 @@
       const height = rect.height;
 
       ctx.clearRect(0, 0, width, height);
+      activeCalculatedPoints = []; // 🛠️ 座標配列をクリア
 
       if (appData.snapshots.length === 0) {
         ctx.font = "13px sans-serif";
-        ctx.fillStyle = "#334155"; /* 🛠️ 「データがありません」の文字を濃いめに修正 */
+        ctx.fillStyle = "#334155";
         ctx.textAlign = "center";
         ctx.fillText("データがありません", width / 2, height / 2);
         return;
@@ -651,8 +714,8 @@
       const totalDivisions = Math.round(valRange / step);
 
       ctx.lineWidth = 1;
-      ctx.fillStyle = "#334155"; /* 🛠️ 金額や日付の文字色をグレーから濃い黒（スレート）に変更 */
-      ctx.font = "bold 11px system-ui, sans-serif"; /* 🛠️ 文字を少し太くしてさらに視認性をアップ */
+      ctx.fillStyle = "#334155";
+      ctx.font = "bold 11px system-ui, sans-serif";
       ctx.textAlign = "right";
       ctx.textBaseline = "middle";
 
@@ -666,10 +729,10 @@
         ctx.lineTo(width - paddingRight, y);
         
         if (val === 0 && minVal < 0) {
-          ctx.strokeStyle = "#475569"; /* 🛠️ 基準線（0円）をしっかりとしたダークグレーに */
+          ctx.strokeStyle = "#475569";
           ctx.lineWidth = 1.5;
         } else {
-          ctx.strokeStyle = "#e2e8f0"; /* 🛠️ 横の補助線を一段階濃いグレーに変更 */
+          ctx.strokeStyle = "#e2e8f0";
           ctx.lineWidth = 1;
         }
         ctx.stroke();
@@ -691,9 +754,11 @@
           } else {
             ctx.lineTo(x, y);
           }
+
+          // 🛠️ あとでクリック判定に使うため、計算されたx, y座標を保存
+          activeCalculatedPoints.push({ x: x, y: y, date: p.date, value: p.value });
         });
 
-        /* 🛠️ グラフのメイン線を淡い色から「ハッキリとした藍色（#0f172a / ダークネイビー）」に変更 */
         ctx.strokeStyle = "#0f172a"; 
         ctx.lineWidth = 4.5;
         ctx.lineJoin = "round";
@@ -706,7 +771,6 @@
           const yRatio = valRange !== 0 ? (p.value - minVal) / valRange : 0.5;
           const y = paddingTop + graphHeight * (1 - yRatio);
 
-          /* 🛠️ プロット点（丸ぽち）の縁取りも濃い藍色に変更 */
           ctx.beginPath();
           ctx.arc(x, y, 4, 0, Math.PI * 2);
           ctx.fillStyle = "#ffffff";
@@ -715,14 +779,8 @@
           ctx.lineWidth = 2.5;
           ctx.stroke();
 
-          /* 🛠️ グラフ上の金額表示の文字を濃い藍色に変更 */
-          ctx.fillStyle = "#0f172a";
-          ctx.font = "bold 11px system-ui, sans-serif";
-          ctx.textAlign = "center";
-          ctx.textBaseline = "bottom";
-          ctx.fillText(p.value.toLocaleString("ja-JP") + "円", x, y - 8);
+          /* 🛠️ クリックで確認できるようになったため、デフォルトのグラフ上の金額テキストは削除しました */
 
-          /* 🛠️ X軸（日付）の文字色を濃い目に変更 */
           ctx.fillStyle = "#334155";
           ctx.font = "bold 11px system-ui, sans-serif";
           ctx.textAlign = "center";
