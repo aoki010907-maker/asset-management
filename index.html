@@ -11,7 +11,7 @@
       --line: #d9dee5;
       --text: #1f2933;
       --muted: #6b7280;
-      --blue: #1b365d; /* 藍色（インディゴネイビー） */
+      --blue: #1b365d;
       --blue-dark: #112240;
       --red: #dc2626;
       --red-light: #fca5a5;
@@ -142,7 +142,7 @@
     .lock-row input { text-align: center; font-size: 20px; letter-spacing: .22em; }
     .lock-error { min-height: 20px; margin-top: 8px; color: var(--red); font-size: 12px; }
     .trend-wrap { max-width: 1040px; margin: 0 auto; }
-    .trend-controls { display: grid; grid-template-columns: minmax(220px, 420px); gap: 8px; margin-bottom: 10px; }
+    .trend-controls { display: grid; grid-template-columns: minmax(150px, 1fr) minmax(150px, 1.2fr); gap: 8px; margin-bottom: 10px; max-width: 540px; }
     .trend-card { padding: 20px; }
     .trend-title { margin: 0 0 4px; font-size: 16px; }
     .trend-note { margin: 0 0 20px; color: var(--muted); font-size: 12px; }
@@ -161,7 +161,7 @@
       section { overflow-x: auto; -webkit-overflow-scrolling: touch; }
       section table { min-width: 590px; }
       .drag-handle { width: 32px; height: 32px; }
-      .trend-controls { grid-template-columns: 1fr; }
+      .trend-controls { grid-template-columns: 1fr; max-width: none; }
       #trendCanvas { height: 340px; }
     }
   </style>
@@ -243,7 +243,10 @@
       <section class="trend-card">
         <h2 class="trend-title">資産推移グラフ</h2>
         <p class="trend-note">表の日付順に推移を表示します。</p>
-        <div class="trend-controls"><select id="trendMetric"></select></div>
+        <div class="trend-controls">
+          <select id="trendMetric"></select>
+          <select id="trendMaxSelect"></select>
+        </div>
         <canvas id="trendCanvas" aria-label="資産推移グラフ"></canvas>
       </section>
     </div>
@@ -278,7 +281,7 @@
       dateInput: document.getElementById("dateInput"), memoInput: document.getElementById("memoInput"), showCompareInput: document.getElementById("showCompareInput"), compareSelect: document.getElementById("compareSelect"), saveStatus: document.getElementById("saveStatus"),
       assetTotal: document.getElementById("assetTotal"), liabilityTotal: document.getElementById("liabilityTotal"), netWorth: document.getElementById("netWorth"), assetTotalDiff: document.getElementById("assetTotalDiff"), liabilityTotalDiff: document.getElementById("liabilityTotalDiff"), netWorthDiff: document.getElementById("netWorthDiff"),
       assetBody: document.getElementById("assetBody"), liabilityBody: document.getElementById("liabilityBody"), addAssetBtn: document.getElementById("addAssetBtn"), addLiabilityBtn: document.getElementById("addLiabilityBtn"), assetTableTotal: document.getElementById("assetTableTotal"), liabilityTableTotal: document.getElementById("liabilityTableTotal"), assetTableDiff: document.getElementById("assetTableDiff"), liabilityTableDiff: document.getElementById("liabilityTableDiff"),
-      linkNameInput: document.getElementById("linkNameInput"), linkUrlInput: document.getElementById("linkUrlInput"), addLinkBtn: document.getElementById("addLinkBtn"), linkList: document.getElementById("linkList"), trendMetric: document.getElementById("trendMetric"), trendCanvas: document.getElementById("trendCanvas"), appLock: document.getElementById("appLock"), passcodeInput: document.getElementById("passcodeInput"), unlockBtn: document.getElementById("unlockBtn"), lockError: document.getElementById("lockError")
+      linkNameInput: document.getElementById("linkNameInput"), linkUrlInput: document.getElementById("linkUrlInput"), addLinkBtn: document.getElementById("addLinkBtn"), linkList: document.getElementById("linkList"), trendMetric: document.getElementById("trendMetric"), trendMaxSelect: document.getElementById("trendMaxSelect"), trendCanvas: document.getElementById("trendCanvas"), appLock: document.getElementById("appLock"), passcodeInput: document.getElementById("passcodeInput"), unlockBtn: document.getElementById("unlockBtn"), lockError: document.getElementById("lockError")
     };
 
     ensureInitialSnapshot();
@@ -294,7 +297,8 @@
       elements.openTrendPageBtn.addEventListener("click", showTrendPage);
       elements.backToAppBtn.addEventListener("click", showAppPage);
       elements.backFromTrendBtn.addEventListener("click", showAppPage);
-      elements.trendMetric.addEventListener("change", drawTrend);
+      elements.trendMetric.addEventListener("change", function() { updateTrendMaxSelect(); drawTrend(); });
+      elements.trendMaxSelect.addEventListener("change", drawTrend);
       elements.dateInput.addEventListener("input", function () { const snapshot = getCurrentSnapshot(); snapshot.date = this.value; saveData(); renderSnapshotSelect(); });
       elements.memoInput.addEventListener("input", function () { getCurrentSnapshot().memo = this.value; saveData(); renderSnapshotSelect(); });
       elements.showCompareInput.addEventListener("change", function () { appData.showCompare = this.checked; saveData(); updateCalculations(); });
@@ -336,7 +340,12 @@
     function getCurrentSnapshot() { return appData.snapshots.find(function (snapshot) { return snapshot.id === appData.currentSnapshotId; }); }
     function getCompareSnapshot() { if (!appData.compareSnapshotId) return null; return appData.snapshots.find(function (snapshot) { return snapshot.id === appData.compareSnapshotId; }) || null; }
     function showUrlPage() { elements.appHeader.classList.add("hidden"); elements.appPage.classList.add("hidden"); elements.trendHeader.classList.add("hidden"); elements.trendPage.classList.add("hidden"); elements.urlHeader.classList.remove("hidden"); elements.urlPage.classList.remove("hidden"); renderLinks(); }
-    function showTrendPage() { elements.appHeader.classList.add("hidden"); elements.appPage.classList.add("hidden"); elements.urlHeader.classList.add("hidden"); elements.urlPage.classList.add("hidden"); elements.trendHeader.classList.remove("hidden"); elements.trendPage.classList.remove("hidden"); renderTrendOptions(); drawTrend(); }
+    function showTrendPage() { 
+      elements.appHeader.classList.add("hidden"); elements.appPage.classList.add("hidden"); elements.urlHeader.classList.add("hidden"); elements.urlPage.classList.add("hidden"); elements.trendHeader.classList.remove("hidden"); elements.trendPage.classList.remove("hidden"); 
+      renderTrendOptions(); 
+      updateTrendMaxSelect();
+      drawTrend(); 
+    }
     function showAppPage() { elements.urlHeader.classList.add("hidden"); elements.urlPage.classList.add("hidden"); elements.trendHeader.classList.add("hidden"); elements.trendPage.classList.add("hidden"); elements.appHeader.classList.remove("hidden"); elements.appPage.classList.remove("hidden"); renderAll(); }
     function addSnapshot() { const current = getCurrentSnapshot(); const newSnapshot = current ? { id: createId(), date: getToday(), memo: "", assets: current.assets.map(function (item) { return { id: createId(), name: item.name, amount: item.amount }; }), liabilities: current.liabilities.map(function (item) { return { id: createId(), name: item.name, amount: item.amount }; }) } : createBlankSnapshot(); appData.snapshots.push(newSnapshot); appData.currentSnapshotId = newSnapshot.id; appData.compareSnapshotId = current ? current.id : ""; saveData(); renderAll(); }
     function deleteCurrentSnapshot() { const current = getCurrentSnapshot(); if (!current) return; if (!confirm("「" + getSnapshotLabel(current) + "」を削除しますか？")) return; appData.snapshots = appData.snapshots.filter(function (snapshot) { return snapshot.id !== current.id; }); if (appData.snapshots.length === 0) appData.snapshots.push(createBlankSnapshot()); appData.currentSnapshotId = appData.snapshots[appData.snapshots.length - 1].id; if (appData.compareSnapshotId === current.id) appData.compareSnapshotId = ""; saveData(); renderAll(); }
@@ -360,7 +369,6 @@
     function renderLinks() { elements.linkList.innerHTML = ""; if (appData.links.length === 0) { const empty = document.createElement("div"); empty.className = "empty"; empty.textContent = "保存されたURLはありません"; elements.linkList.appendChild(empty); return; } appData.links.forEach(function (link) { const item = document.createElement("div"); const href = normalizeUrl(link.url); item.className = "link-item"; item.innerHTML = "<strong>" + escapeHtml(link.name || "名称未設定") + "</strong><a href=\"" + escapeAttribute(href) + "\" target=\"_blank\" rel=\"noopener noreferrer\">" + escapeHtml(link.url) + "</a><button class=\"small danger\" data-action=\"delete-link\" data-id=\"" + escapeAttribute(link.id) + "\">削除</button>"; elements.linkList.appendChild(item); }); }
     function handleLinkDelete(event) { const button = event.target.closest("[data-action='delete-link']"); if (!button) return; const id = button.dataset.id; appData.links = appData.links.filter(function (link) { return link.id !== id; }); saveData(); renderLinks(); }
 
-    /* 🛠️ 増減率（％）を計算・表示するロジックを追加 */
     function getPercentString(diff, comp) {
       if (comp === 0) return " / -";
       return " / " + ((diff / Math.abs(comp)) * 100).toFixed(1) + "%";
@@ -400,7 +408,6 @@
 
       const showCompare = appData.showCompare && Boolean(compare);
       
-      // サマリーに増減率を反映
       setDiff(elements.assetTotalDiff, showCompare, assetTotal, compareAssetTotal);
       setDiff(elements.liabilityTotalDiff, showCompare, liabilityTotal, compareLiabilityTotal);
       setDiff(elements.netWorthDiff, showCompare, netWorth, compareNetWorth);
@@ -420,7 +427,6 @@
         const cell = row.querySelector("[data-compare-cell='true']");
         if (cell) {
           const d = item.amount - cAmt;
-          // 各行にも増減率を反映
           cell.textContent = appData.showCompare && appData.compareSnapshotId ? (d > 0 ? "+" : "") + formatYen(d) + getPercentString(d, cAmt) : "";
           applyNumberColor(cell, d);
         }
@@ -532,6 +538,51 @@
       }
     }
 
+    function updateTrendMaxSelect() {
+      const metric = elements.trendMetric.value || "net-worth";
+      let dataMax = 0;
+
+      appData.snapshots.forEach(function (s) {
+        let val = 0;
+        if (metric === "net-worth") { val = sumItems(s.assets) - sumItems(s.liabilities); }
+        else if (metric === "assets-total") { val = sumItems(s.assets); }
+        else if (metric === "liabilities-total") { val = sumItems(s.liabilities); }
+        else if (metric.indexOf("asset:") === 0) {
+          const tName = metric.substring(6);
+          const f = s.assets.find(function(i) { return i.name.trim() === tName; });
+          val = f ? f.amount : 0;
+        } else if (metric.indexOf("liability:") === 0) {
+          const tName = metric.substring(10);
+          const f = s.liabilities.find(function(i) { return i.name.trim() === tName; });
+          val = f ? f.amount : 0;
+        }
+        if (val > dataMax) dataMax = val;
+      });
+
+      const limits = [1000000, 3000000, 5000000, 10000000, 20000000, 30000000, 50000000, 80000000, 100000000, 150000000, 200000000];
+      const validLimits = limits.filter(function(L) { return L >= dataMax; });
+      if (validLimits.length === 0) {
+        validLimits.push(Math.ceil(dataMax / 1000000) * 1000000); 
+      }
+
+      const currentSelection = parseInt(elements.trendMaxSelect.value, 10);
+      elements.trendMaxSelect.innerHTML = "";
+
+      validLimits.forEach(function(L) {
+        const opt = document.createElement("option");
+        opt.value = L;
+        /* 🛠️ プルダウン選択肢も分かりやすく3桁カンマ表記（~円）に変更 */
+        opt.textContent = "上限: " + L.toLocaleString("ja-JP") + "円";
+        elements.trendMaxSelect.appendChild(opt);
+      });
+
+      if (currentSelection && validLimits.includes(currentSelection)) {
+        elements.trendMaxSelect.value = currentSelection;
+      } else {
+        elements.trendMaxSelect.value = validLimits[0];
+      }
+    }
+
     function drawTrend() {
       const canvas = elements.trendCanvas;
       const rect = canvas.getBoundingClientRect();
@@ -572,34 +623,35 @@
           val = sumItems(s.liabilities);
         } else if (metric.indexOf("asset:") === 0) {
           const targetName = metric.substring(6);
-          const found = s.assets.find(function (i) { return i.name.trim() === targetName; });
+          const found = s.assets.find(function(i) { return i.name.trim() === targetName; });
           val = found ? found.amount : 0;
         } else if (metric.indexOf("liability:") === 0) {
           const targetName = metric.substring(10);
-          const found = s.liabilities.find(function (i) { return i.name.trim() === targetName; });
+          const found = s.liabilities.find(function(i) { return i.name.trim() === targetName; });
           val = found ? found.amount : 0;
         }
         return { date: s.date, value: val };
       });
 
-      const paddingLeft = 90;
+      /* 🛠️ カンマ表記で文字幅が広がるため、左の余白を90から110に拡張 */
+      const paddingLeft = 110;
       const paddingRight = 45;
       const paddingTop = 45;
       const paddingBottom = 45;
       const graphWidth = width - paddingLeft - paddingRight;
       const graphHeight = height - paddingTop - paddingBottom;
 
-      let maxVal = Math.max.apply(null, points.map(function (p) { return p.value; }));
-      let minVal = Math.min.apply(null, points.map(function (p) { return p.value; }));
-      
-      if (maxVal === minVal) {
-        maxVal += 10000;
-        minVal -= 10000;
+      let dataMin = 0;
+      if (points.length > 0) {
+        dataMin = Math.min.apply(null, points.map(function(p){ return p.value; }));
       }
-      const valRange = maxVal - minVal;
 
-      const gridCount = 4;
-      
+      const selectedMax = parseInt(elements.trendMaxSelect.value, 10) || 1000000;
+      const step = selectedMax / 10;
+      const minVal = dataMin >= 0 ? 0 : -Math.ceil(Math.abs(dataMin) / step) * step;
+      const valRange = selectedMax - minVal;
+      const totalDivisions = Math.round(valRange / step);
+
       ctx.strokeStyle = "#f1f5f9";
       ctx.lineWidth = 1;
       ctx.fillStyle = "#94a3b8";
@@ -607,17 +659,27 @@
       ctx.textAlign = "right";
       ctx.textBaseline = "middle";
 
-      for (let i = 0; i <= gridCount; i++) {
-        const ratio = i / gridCount;
+      for (let i = 0; i <= totalDivisions; i++) {
+        const val = minVal + i * step;
+        const ratio = (val - minVal) / valRange;
         const y = paddingTop + graphHeight * (1 - ratio);
-        const val = minVal + valRange * ratio;
         
         ctx.beginPath();
         ctx.moveTo(paddingLeft, y);
         ctx.lineTo(width - paddingRight, y);
+        
+        if (val === 0 && minVal < 0) {
+          ctx.strokeStyle = "#cbd5e1";
+          ctx.lineWidth = 1.5;
+        } else {
+          ctx.strokeStyle = "#f1f5f9";
+          ctx.lineWidth = 1;
+        }
         ctx.stroke();
         
-        ctx.fillText(Math.round(val).toLocaleString("ja-JP"), paddingLeft - 12, y);
+        /* 🛠️ Y軸ラベルをすべて「1,000,000円」のカンマ表記（~円）に修正 */
+        const label = val.toLocaleString("ja-JP") + "円";
+        ctx.fillText(label, paddingLeft - 12, y);
       }
 
       if (points.length > 0) {
@@ -635,7 +697,6 @@
           }
         });
 
-        /* 🛠️ グラフの線をより太く（lineWidthを4に） */
         ctx.strokeStyle = "var(--blue)";
         ctx.lineWidth = 4.5;
         ctx.lineJoin = "round";
