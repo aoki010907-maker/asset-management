@@ -107,7 +107,7 @@
     .summary-label.net-worth-label { color: var(--green); }
     .summary-value { font-size: 17px; font-weight: 700; }
     .summary-diff { margin-top: 3px; font-size: 12px; color: var(--muted); }
-    .positive { color: var(--blue); font-weight: 700; } /* 金額表示を藍色に */
+    .positive { color: var(--blue); font-weight: 700; } 
     .negative { color: var(--red); }
     #snapshotSelect { font-weight: 700; font-size: 15px; }
     .sheet { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: start; }
@@ -360,6 +360,19 @@
     function renderLinks() { elements.linkList.innerHTML = ""; if (appData.links.length === 0) { const empty = document.createElement("div"); empty.className = "empty"; empty.textContent = "保存されたURLはありません"; elements.linkList.appendChild(empty); return; } appData.links.forEach(function (link) { const item = document.createElement("div"); const href = normalizeUrl(link.url); item.className = "link-item"; item.innerHTML = "<strong>" + escapeHtml(link.name || "名称未設定") + "</strong><a href=\"" + escapeAttribute(href) + "\" target=\"_blank\" rel=\"noopener noreferrer\">" + escapeHtml(link.url) + "</a><button class=\"small danger\" data-action=\"delete-link\" data-id=\"" + escapeAttribute(link.id) + "\">削除</button>"; elements.linkList.appendChild(item); }); }
     function handleLinkDelete(event) { const button = event.target.closest("[data-action='delete-link']"); if (!button) return; const id = button.dataset.id; appData.links = appData.links.filter(function (link) { return link.id !== id; }); saveData(); renderLinks(); }
 
+    /* 🛠️ 増減率（％）を計算・表示するロジックを追加 */
+    function getPercentString(diff, comp) {
+      if (comp === 0) return " / -";
+      return " / " + ((diff / Math.abs(comp)) * 100).toFixed(1) + "%";
+    }
+
+    function setDiff(el, show, cur, comp) {
+      if (!show) { el.textContent = ""; return; }
+      const d = cur - comp;
+      el.textContent = (d > 0 ? "+" : "") + formatYen(d) + getPercentString(d, comp);
+      applyNumberColor(el, d);
+    }
+
     function updateCalculations() {
       const current = getCurrentSnapshot();
       const compare = getCompareSnapshot();
@@ -386,6 +399,8 @@
       applyNumberColor(elements.liabilityTableTotal, liabilityTotal);
 
       const showCompare = appData.showCompare && Boolean(compare);
+      
+      // サマリーに増減率を反映
       setDiff(elements.assetTotalDiff, showCompare, assetTotal, compareAssetTotal);
       setDiff(elements.liabilityTotalDiff, showCompare, liabilityTotal, compareLiabilityTotal);
       setDiff(elements.netWorthDiff, showCompare, netWorth, compareNetWorth);
@@ -405,7 +420,8 @@
         const cell = row.querySelector("[data-compare-cell='true']");
         if (cell) {
           const d = item.amount - cAmt;
-          cell.textContent = appData.showCompare && appData.compareSnapshotId ? (d > 0 ? "+" : "") + formatYen(d) : "";
+          // 各行にも増減率を反映
+          cell.textContent = appData.showCompare && appData.compareSnapshotId ? (d > 0 ? "+" : "") + formatYen(d) + getPercentString(d, cAmt) : "";
           applyNumberColor(cell, d);
         }
       });
@@ -441,13 +457,6 @@
       if (num < 0) { el.classList.add("negative"); el.classList.remove("positive"); }
       else if (num > 0) { el.classList.add("positive"); el.classList.remove("negative"); }
       else { el.classList.remove("positive", "negative"); }
-    }
-
-    function setDiff(el, show, cur, comp) {
-      if (!show) { el.textContent = ""; return; }
-      const d = cur - comp;
-      el.textContent = (d > 0 ? "+" : "") + formatYen(d);
-      applyNumberColor(el, d);
     }
 
     function exportData() {
@@ -523,7 +532,6 @@
       }
     }
 
-    /* 🛠️ 修正箇所: 藍色ライン・グラデーション無し・日付と各時点金額プロットのシンプル線グラフ */
     function drawTrend() {
       const canvas = elements.trendCanvas;
       const rect = canvas.getBoundingClientRect();
@@ -574,10 +582,9 @@
         return { date: s.date, value: val };
       });
 
-      // 各数値ラベルを綺麗に収めるために上下左右のパディングを微調整
       const paddingLeft = 90;
       const paddingRight = 45;
-      const paddingTop = 45;    /* 上部の金額表示スペースを確保 */
+      const paddingTop = 45;
       const paddingBottom = 45;
       const graphWidth = width - paddingLeft - paddingRight;
       const graphHeight = height - paddingTop - paddingBottom;
@@ -593,7 +600,6 @@
 
       const gridCount = 4;
       
-      // 薄い背景用グリッド
       ctx.strokeStyle = "#f1f5f9";
       ctx.lineWidth = 1;
       ctx.fillStyle = "#94a3b8";
@@ -615,7 +621,6 @@
       }
 
       if (points.length > 0) {
-        // 1. 線のパス構築と描画
         ctx.beginPath();
         points.forEach(function (p, idx) {
           const xRatio = points.length > 1 ? idx / (points.length - 1) : 0.5;
@@ -630,37 +635,33 @@
           }
         });
 
-        // 線の設定 (藍色、シンプルな直線)
+        /* 🛠️ グラフの線をより太く（lineWidthを4に） */
         ctx.strokeStyle = "var(--blue)";
-        ctx.lineWidth = 2.5;
+        ctx.lineWidth = 4.5;
         ctx.lineJoin = "round";
         ctx.lineCap = "round";
         ctx.stroke();
 
-        // 2. プロットドット・日付・「時点金額」の描画
         points.forEach(function (p, idx) {
           const xRatio = points.length > 1 ? idx / (points.length - 1) : 0.5;
           const x = paddingLeft + graphWidth * xRatio;
           const yRatio = valRange !== 0 ? (p.value - minVal) / valRange : 0.5;
           const y = paddingTop + graphHeight * (1 - yRatio);
 
-          // ドット（背景白、枠線を藍色に）
           ctx.beginPath();
           ctx.arc(x, y, 4, 0, Math.PI * 2);
           ctx.fillStyle = "#ffffff";
           ctx.fill();
           ctx.strokeStyle = "var(--blue)";
-          ctx.lineWidth = 2;
+          ctx.lineWidth = 2.5;
           ctx.stroke();
 
-          // 🛠️ 追加: 日付時点の金額をドットの真上に描画 (色は藍色)
           ctx.fillStyle = "var(--blue)";
           ctx.font = "bold 11px system-ui, sans-serif";
           ctx.textAlign = "center";
           ctx.textBaseline = "bottom";
           ctx.fillText(p.value.toLocaleString("ja-JP") + "円", x, y - 8);
 
-          // 日付ラベルの描画
           ctx.fillStyle = "#64748b";
           ctx.font = "500 11px system-ui, sans-serif";
           ctx.textAlign = "center";
