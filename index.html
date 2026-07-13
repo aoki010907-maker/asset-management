@@ -134,13 +134,6 @@
     
     .hidden { display: none !important; }
     
-    .app-lock { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(244,246,248,.96); }
-    .lock-card { width: min(100%, 360px); padding: 24px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 12px 30px rgba(31,41,51,.12); }
-    .lock-card h2 { margin: 0 0 8px; font-size: 18px; }
-    .lock-card p { margin: 0 0 14px; color: var(--muted); }
-    .lock-row { display: flex; gap: 8px; }
-    .lock-row input { text-align: center; font-size: 20px; letter-spacing: .22em; }
-    .lock-error { min-height: 20px; margin-top: 8px; color: var(--red); font-size: 12px; }
     .trend-wrap { max-width: 1040px; margin: 0 auto; }
     .trend-controls { display: grid; grid-template-columns: minmax(150px, 1fr) minmax(150px, 1.2fr); gap: 8px; margin-bottom: 10px; max-width: 540px; }
     .trend-card { padding: 20px; position: relative; }
@@ -148,32 +141,31 @@
     .trend-note { margin: 0 0 20px; color: var(--muted); font-size: 12px; }
     #trendCanvas { display: block; width: 100%; height: 400px; cursor: pointer; }
 
-    /* 🛠️ コメント吹き出し（ポップアップ）のスタイル設定 */
-    .graph-tooltip {
+    .trend-tooltip {
       position: absolute;
-      background: rgba(15, 23, 42, 0.95);
+      background: #0f172a;
       color: #ffffff;
       padding: 6px 10px;
       border-radius: 6px;
       font-size: 12px;
-      font-weight: 700;
+      font-weight: bold;
       pointer-events: none;
-      white-space: nowrap;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      box-shadow: 0 4px 12px rgba(15, 23, 42, 0.15);
       z-index: 10;
-      display: none;
+      white-space: nowrap;
       transform: translate(-50%, -100%);
       margin-top: -12px;
+      display: none;
     }
-    .graph-tooltip::after {
+    .trend-tooltip::after {
       content: "";
       position: absolute;
-      bottom: -5px;
+      bottom: -4px;
       left: 50%;
       transform: translateX(-50%);
-      border-width: 5px 5px 0;
+      border-width: 4px 4px 0;
       border-style: solid;
-      border-color: rgba(15, 23, 42, 0.95) transparent;
+      border-color: #0f172a transparent;
       display: block;
       width: 0;
     }
@@ -197,14 +189,6 @@
   </style>
 </head>
 <body>
-  <div id="appLock" class="app-lock">
-    <div class="lock-card">
-      <h2>個人資産管理</h2>
-      <p>4桁のパスコードを入力してください。</p>
-      <div class="lock-row"><input id="passcodeInput" type="password" inputmode="numeric" maxlength="4" autocomplete="off" aria-label="パスコード"><button id="unlockBtn" class="primary">開く</button></div>
-      <div id="lockError" class="lock-error"></div>
-    </div>
-  </div>
   <header id="appHeader">
     <h1>個人資産管理</h1>
     <div class="toolbar">
@@ -272,14 +256,30 @@
     <div class="trend-wrap">
       <section class="trend-card">
         <h2 class="trend-title">資産推移グラフ</h2>
-        <p class="trend-note">表の日付順に推移を表示します。点（○）をクリックすると詳細を確認できます。</p>
+        <p class="trend-note">表の日付順に推移を表示します。点（〇）をクリックすると詳細を表示します。</p>
         <div class="trend-controls">
           <select id="trendMetric"></select>
           <select id="trendMaxSelect"></select>
         </div>
-        <!-- 🛠️ ポップアップ表示用の要素を追加 -->
-        <div id="graphTooltip" class="graph-tooltip"></div>
         <canvas id="trendCanvas" aria-label="資産推移グラフ"></canvas>
+        <div id="trendTooltip" class="trend-tooltip"></div>
+      </section>
+    </div>
+  </main>
+
+  <main id="urlPage" class="hidden">
+    <div class="url-page-wrap">
+      <section>
+        <div class="section-head"><h2>URLを追加</h2></div>
+        <div class="link-form">
+          <input id="linkNameInput" type="text" placeholder="表示名">
+          <input id="linkUrlInput" type="url" placeholder="URL">
+          <button id="addLinkBtn">URLを追加</button>
+        </div>
+      </section>
+      <section>
+        <div class="section-head"><h2>保存済みURL</h2></div>
+        <div id="linkList" class="link-list"></div>
       </section>
     </div>
   </main>
@@ -289,7 +289,7 @@
     const defaultData = { currentSnapshotId: "", compareSnapshotId: "", showCompare: true, snapshots: [], links: [] };
     let appData = loadData();
     let dragState = null;
-    let activeCalculatedPoints = []; // 🛠️ 描画した点の座標を保持する配列
+    let clickTargets = [];
 
     const elements = {
       appHeader: document.getElementById("appHeader"), urlHeader: document.getElementById("urlHeader"), trendHeader: document.getElementById("trendHeader"), appPage: document.getElementById("appPage"), urlPage: document.getElementById("urlPage"), trendPage: document.getElementById("trendPage"),
@@ -297,13 +297,13 @@
       dateInput: document.getElementById("dateInput"), memoInput: document.getElementById("memoInput"), showCompareInput: document.getElementById("showCompareInput"), compareSelect: document.getElementById("compareSelect"), saveStatus: document.getElementById("saveStatus"),
       assetTotal: document.getElementById("assetTotal"), liabilityTotal: document.getElementById("liabilityTotal"), netWorth: document.getElementById("netWorth"), assetTotalDiff: document.getElementById("assetTotalDiff"), liabilityTotalDiff: document.getElementById("liabilityTotalDiff"), netWorthDiff: document.getElementById("netWorthDiff"),
       assetBody: document.getElementById("assetBody"), liabilityBody: document.getElementById("liabilityBody"), addAssetBtn: document.getElementById("addAssetBtn"), addLiabilityBtn: document.getElementById("addLiabilityBtn"), assetTableTotal: document.getElementById("assetTableTotal"), liabilityTableTotal: document.getElementById("liabilityTableTotal"), assetTableDiff: document.getElementById("assetTableDiff"), liabilityTableDiff: document.getElementById("liabilityTableDiff"),
-      linkNameInput: document.getElementById("linkNameInput"), linkUrlInput: document.getElementById("linkUrlInput"), addLinkBtn: document.getElementById("addLinkBtn"), linkList: document.getElementById("linkList"), trendMetric: document.getElementById("trendMetric"), trendMaxSelect: document.getElementById("trendMaxSelect"), trendCanvas: document.getElementById("trendCanvas"), graphTooltip: document.getElementById("graphTooltip"), appLock: document.getElementById("appLock"), passcodeInput: document.getElementById("passcodeInput"), unlockBtn: document.getElementById("unlockBtn"), lockError: document.getElementById("lockError")
+      linkNameInput: document.getElementById("linkNameInput"), linkUrlInput: document.getElementById("linkUrlInput"), addLinkBtn: document.getElementById("addLinkBtn"), linkList: document.getElementById("linkList"), trendMetric: document.getElementById("trendMetric"), trendMaxSelect: document.getElementById("trendMaxSelect"), trendCanvas: document.getElementById("trendCanvas"),
+      trendTooltip: document.getElementById("trendTooltip")
     };
 
     ensureInitialSnapshot();
     registerEvents();
     renderAll();
-    setupLock();
 
     function registerEvents() {
       elements.snapshotSelect.addEventListener("change", function () { appData.currentSnapshotId = this.value; saveData(); renderAll(); });
@@ -313,7 +313,7 @@
       elements.openTrendPageBtn.addEventListener("click", showTrendPage);
       elements.backToAppBtn.addEventListener("click", showAppPage);
       elements.backFromTrendBtn.addEventListener("click", showAppPage);
-      elements.trendMetric.addEventListener("change", function() { hideTooltip(); updateTrendMaxSelect(); drawTrend(); });
+      elements.trendMetric.addEventListener("change", function() { updateTrendMaxSelect(); hideTooltip(); drawTrend(); });
       elements.trendMaxSelect.addEventListener("change", function() { hideTooltip(); drawTrend(); });
       elements.dateInput.addEventListener("input", function () { const snapshot = getCurrentSnapshot(); snapshot.date = this.value; saveData(); renderSnapshotSelect(); });
       elements.memoInput.addEventListener("input", function () { getCurrentSnapshot().memo = this.value; saveData(); renderSnapshotSelect(); });
@@ -340,8 +340,6 @@
       elements.exportBtn.addEventListener("click", exportData);
       elements.importBtn.addEventListener("click", function () { elements.importFile.value = ""; elements.importFile.click(); });
       elements.importFile.addEventListener("change", importData);
-      
-      /* 🛠 * キャンバスクリックイベント（点を判定する処理）を追加 */
       elements.trendCanvas.addEventListener("click", handleCanvasClick);
     }
 
@@ -388,54 +386,35 @@
     function addLink() { const name = elements.linkNameInput.value.trim(); const url = elements.linkUrlInput.value.trim(); if (!name || !url) { alert("表示名とURLを入力してください。"); return; } appData.links.push({ id: createId(), name: name, url: url }); elements.linkNameInput.value = ""; elements.linkUrlInput.value = ""; saveData(); renderLinks(); }
     function renderLinks() { elements.linkList.innerHTML = ""; if (appData.links.length === 0) { const empty = document.createElement("div"); empty.className = "empty"; empty.textContent = "保存されたURLはありません"; elements.linkList.appendChild(empty); return; } appData.links.forEach(function (link) { const item = document.createElement("div"); const href = normalizeUrl(link.url); item.className = "link-item"; item.innerHTML = "<strong>" + escapeHtml(link.name || "名称未設定") + "</strong><a href=\"" + escapeAttribute(href) + "\" target=\"_blank\" rel=\"noopener noreferrer\">" + escapeHtml(link.url) + "</a><button class=\"small danger\" data-action=\"delete-link\" data-id=\"" + escapeAttribute(link.id) + "\">削除</button>"; elements.linkList.appendChild(item); }); }
     function handleLinkDelete(event) { const button = event.target.closest("[data-action='delete-link']"); if (!button) return; const id = button.dataset.id; appData.links = appData.links.filter(function (link) { return link.id !== id; }); saveData(); renderLinks(); }
-
-    function getPercentString(diff, comp) {
-      if (comp === 0) return " / -";
-      return " / " + ((diff / Math.abs(comp)) * 100).toFixed(1) + "%";
-    }
-
-    function setDiff(el, show, cur, comp) {
-      if (!show) { el.textContent = ""; return; }
-      const d = cur - comp;
-      el.textContent = (d > 0 ? "+" : "") + formatYen(d) + getPercentString(d, comp);
-      applyNumberColor(el, d);
-    }
-
+    function getPercentString(diff, comp) { if (comp === 0) return " / -"; return " / " + ((diff / Math.abs(comp)) * 100).toFixed(1) + "%"; }
+    function setDiff(el, show, cur, comp) { if (!show) { el.textContent = ""; return; } const d = cur - comp; el.textContent = (d > 0 ? "+" : "") + formatYen(d) + getPercentString(d, comp); applyNumberColor(el, d); }
     function updateCalculations() {
       const current = getCurrentSnapshot();
       const compare = getCompareSnapshot();
       if (!current) return;
-
       const assetTotal = sumItems(current.assets);
       const liabilityTotal = sumItems(current.liabilities);
       const netWorth = assetTotal - liabilityTotal;
-
       const compareAssetTotal = compare ? sumItems(compare.assets) : 0;
       const compareLiabilityTotal = compare ? sumItems(compare.liabilities) : 0;
       const compareNetWorth = compareAssetTotal - compareLiabilityTotal;
-
       elements.assetTotal.textContent = formatYen(assetTotal);
       elements.liabilityTotal.textContent = formatYen(liabilityTotal);
       elements.netWorth.textContent = formatYen(netWorth);
       elements.assetTableTotal.textContent = formatYen(assetTotal);
       elements.liabilityTableTotal.textContent = formatYen(liabilityTotal);
-
       applyNumberColor(elements.assetTotal, assetTotal);
       applyNumberColor(elements.liabilityTotal, liabilityTotal);
       applyNumberColor(elements.netWorth, netWorth);
       applyNumberColor(elements.assetTableTotal, assetTotal);
       applyNumberColor(elements.liabilityTableTotal, liabilityTotal);
-
       const showCompare = appData.showCompare && Boolean(compare);
-      
       setDiff(elements.assetTotalDiff, showCompare, assetTotal, compareAssetTotal);
       setDiff(elements.liabilityTotalDiff, showCompare, liabilityTotal, compareLiabilityTotal);
       setDiff(elements.netWorthDiff, showCompare, netWorth, compareNetWorth);
-
       updateRowsCompare(current.assets, compare ? compare.assets : [], elements.assetBody);
       updateRowsCompare(current.liabilities, compare ? compare.liabilities : [], elements.liabilityBody);
     }
-
     function updateRowsCompare(items, compItems, body) {
       const rows = body.querySelectorAll("tr");
       rows.forEach(function (row) {
@@ -452,24 +431,6 @@
         }
       });
     }
-
-    function setupLock() {
-      elements.unlockBtn.addEventListener("click", function () {
-        if (elements.passcodeInput.value === "7979") {
-          elements.appLock.classList.add("hidden");
-          elements.lockError.textContent = "";
-        } else {
-          elements.lockError.textContent = "パスコードが正しくありません。";
-          elements.passcodeInput.value = "";
-          elements.passcodeInput.focus();
-        }
-      });
-
-      elements.passcodeInput.addEventListener("keydown", function (e) {
-        if (e.key === "Enter") elements.unlockBtn.click();
-      });
-    }
-
     function sumItems(items) { return items.reduce(function (a, b) { return a + (b.amount || 0); }, 0); }
     function formatYen(num) { return num.toLocaleString("ja-JP") + "円"; }
     function parseAmount(str) { const n = parseInt(String(str).replace(/[^\d-]/g, ""), 10); return isNaN(n) ? 0 : n; }
@@ -478,13 +439,11 @@
     function escapeAttribute(str) { return escapeHtml(str); }
     function normalizeUrl(url) { if (!url) return ""; return /^https?:\/\//i.test(url) ? url : "https://" + url; }
     function getSnapshotLabel(snapshot) { return snapshot.date + (snapshot.memo ? " (" + snapshot.memo + ")" : ""); }
-
     function applyNumberColor(el, num) {
       if (num < 0) { el.classList.add("negative"); el.classList.remove("positive"); }
       else if (num > 0) { el.classList.add("positive"); el.classList.remove("negative"); }
       else { el.classList.remove("positive", "negative"); }
     }
-
     function exportData() {
       const blob = new Blob([JSON.stringify(appData, null, 2)], { type: "application/json" });
       const a = document.createElement("a");
@@ -492,7 +451,6 @@
       a.download = "asset_management_backup.json";
       a.click();
     }
-
     function importData(e) {
       const file = e.target.files[0];
       if (!file) return;
@@ -503,17 +461,13 @@
           saveData();
           renderAll();
           alert("バックアップデータを読み込みました。");
-        } catch (err) {
-          alert("不正なファイル形式です。");
-        }
+        } catch (err) { alert("不正なファイル形式です。"); }
       };
       reader.readAsText(file);
     }
-
     function renderTrendOptions() {
       const currentSelection = elements.trendMetric.value;
       elements.trendMetric.innerHTML = "";
-      
       const gGeneral = document.createElement("optgroup");
       gGeneral.label = "概要";
       const metrics = [{ v: "net-worth", t: "純資産" }, { v: "assets-total", t: "資産合計" }, { v: "liabilities-total", t: "負債合計" }];
@@ -523,14 +477,12 @@
         gGeneral.appendChild(opt);
       });
       elements.trendMetric.appendChild(gGeneral);
-
       const assetNames = new Set();
       const liabilityNames = new Set();
       appData.snapshots.forEach(function (s) {
         if (s.assets) s.assets.forEach(function (i) { if (i.name.trim()) assetNames.add(i.name.trim()); });
         if (s.liabilities) s.liabilities.forEach(function (i) { if (i.name.trim()) liabilityNames.add(i.name.trim()); });
       });
-
       if (assetNames.size > 0) {
         const gAssets = document.createElement("optgroup");
         gAssets.label = "資産の項目";
@@ -541,7 +493,6 @@
         });
         elements.trendMetric.appendChild(gAssets);
       }
-
       if (liabilityNames.size > 0) {
         const gLiabilities = document.createElement("optgroup");
         gLiabilities.label = "負債の項目";
@@ -552,16 +503,11 @@
         });
         elements.trendMetric.appendChild(gLiabilities);
       }
-
-      if (currentSelection) {
-        elements.trendMetric.value = currentSelection;
-      }
+      if (currentSelection) elements.trendMetric.value = currentSelection;
     }
-
     function updateTrendMaxSelect() {
       const metric = elements.trendMetric.value || "net-worth";
       let dataMax = 0;
-
       appData.snapshots.forEach(function (s) {
         let val = 0;
         if (metric === "net-worth") { val = sumItems(s.assets) - sumItems(s.liabilities); }
@@ -578,89 +524,52 @@
         }
         if (val > dataMax) dataMax = val;
       });
-
       const limits = [1000000, 3000000, 5000000, 10000000, 20000000, 30000000, 50000000, 80000000, 100000000, 150000000, 200000000];
       const validLimits = limits.filter(function(L) { return L >= dataMax; });
-      if (validLimits.length === 0) {
-        validLimits.push(Math.ceil(dataMax / 1000000) * 1000000); 
-      }
-
+      if (validLimits.length === 0) validLimits.push(Math.ceil(dataMax / 1000000) * 1000000);
       const currentSelection = parseInt(elements.trendMaxSelect.value, 10);
       elements.trendMaxSelect.innerHTML = "";
-
       validLimits.forEach(function(L) {
         const opt = document.createElement("option");
         opt.value = L;
         opt.textContent = "上限: " + L.toLocaleString("ja-JP") + "円";
         elements.trendMaxSelect.appendChild(opt);
       });
-
-      if (currentSelection && validLimits.includes(currentSelection)) {
-        elements.trendMaxSelect.value = currentSelection;
-      } else {
-        elements.trendMaxSelect.value = validLimits[0];
-      }
+      if (currentSelection && validLimits.includes(currentSelection)) elements.trendMaxSelect.value = currentSelection;
+      else elements.trendMaxSelect.value = validLimits[0];
     }
-
-    /* 🛠️ コメント表示（吹き出し）を非表示にする共通関数 */
-    function hideTooltip() {
-      elements.graphTooltip.style.display = "none";
-    }
-
-    /* 🛠️ キャンバスクリック時の当たり判定処理 */
+    function hideTooltip() { elements.trendTooltip.style.display = "none"; }
     function handleCanvasClick(event) {
       const canvas = elements.trendCanvas;
       const rect = canvas.getBoundingClientRect();
-      
-      // クリックされた正確な相対座標 (CSSピクセル単位)
-      const mouseX = event.clientX - rect.left;
-      const mouseY = event.clientY - rect.top;
-
-      let closestPoint = null;
-      let minDistance = 20; // 判定のクリック許容範囲（20ピクセル以内）
-
-      activeCalculatedPoints.forEach(function (pt) {
-        const dx = mouseX - pt.x;
-        const dy = mouseY - pt.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-
-        if (distance < minDistance) {
-          minDistance = distance;
-          closestPoint = pt;
-        }
-      });
-
-      if (closestPoint) {
-        // ポップアップ（コメント形式）を表示して位置を調整
-        const tooltip = elements.graphTooltip;
-        const displayDate = closestPoint.date.replace(/^(\d{4})-(0?)([1-9]|1[0-2])-(0?)([1-9]|[12]\d|3[01])$/, '$3月$5日');
-        tooltip.innerHTML = displayDate + "<br>" + closestPoint.value.toLocaleString("ja-JP") + "円";
-        tooltip.style.display = "block";
-        tooltip.style.left = closestPoint.x + "px";
-        tooltip.style.top = closestPoint.y + "px";
-      } else {
-        // 点以外をクリックした場合は吹き出しを閉じる
-        hideTooltip();
+      const clickX = event.clientX - rect.left;
+      const clickY = event.clientY - rect.top;
+      let hitPoint = null;
+      const hitRadius = 15;
+      for (let i = 0; i < clickTargets.length; i++) {
+        const pt = clickTargets[i];
+        const dist = Math.sqrt(Math.pow(clickX - pt.x, 2) + Math.pow(clickY - pt.y, 2));
+        if (dist <= hitRadius) { hitPoint = pt; break; }
       }
+      if (hitPoint) {
+        elements.trendTooltip.innerHTML = "<div>" + escapeHtml(hitPoint.date) + "</div><div style='color: #60a5fa; margin-top: 2px;'>" + hitPoint.value.toLocaleString("ja-JP") + "円</div>";
+        elements.trendTooltip.style.left = hitPoint.x + "px";
+        elements.trendTooltip.style.top = hitPoint.y + "px";
+        elements.trendTooltip.style.display = "block";
+      } else hideTooltip();
     }
-
     function drawTrend() {
       const canvas = elements.trendCanvas;
       const rect = canvas.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
-      
       canvas.width = rect.width * dpr;
       canvas.height = rect.height * dpr;
-      
       const ctx = canvas.getContext("2d");
       ctx.scale(dpr, dpr);
-      
       const width = rect.width;
       const height = rect.height;
-
       ctx.clearRect(0, 0, width, height);
-      activeCalculatedPoints = []; // 🛠️ 座標配列をクリア
-
+      clickTargets = [];
       if (appData.snapshots.length === 0) {
         ctx.font = "13px sans-serif";
         ctx.fillStyle = "#334155";
@@ -668,22 +577,14 @@
         ctx.fillText("データがありません", width / 2, height / 2);
         return;
       }
-
-      const sortedSnapshots = appData.snapshots.slice().sort(function (a, b) {
-        return a.date.localeCompare(b.date);
-      });
-
+      const sortedSnapshots = appData.snapshots.slice().sort(function (a, b) { return a.date.localeCompare(b.date); });
       const metric = elements.trendMetric.value || "net-worth";
-      
       const points = sortedSnapshots.map(function (s) {
         let val = 0;
-        if (metric === "net-worth") {
-          val = sumItems(s.assets) - sumItems(s.liabilities);
-        } else if (metric === "assets-total") {
-          val = sumItems(s.assets);
-        } else if (metric === "liabilities-total") {
-          val = sumItems(s.liabilities);
-        } else if (metric.indexOf("asset:") === 0) {
+        if (metric === "net-worth") val = sumItems(s.assets) - sumItems(s.liabilities);
+        else if (metric === "assets-total") val = sumItems(s.assets);
+        else if (metric === "liabilities-total") val = sumItems(s.liabilities);
+        else if (metric.indexOf("asset:") === 0) {
           const targetName = metric.substring(6);
           const found = s.assets.find(function(i) { return i.name.trim() === targetName; });
           val = found ? found.amount : 0;
@@ -694,53 +595,30 @@
         }
         return { date: s.date, value: val };
       });
-
-      const paddingLeft = 110;
-      const paddingRight = 45;
-      const paddingTop = 45;
-      const paddingBottom = 45;
-      const graphWidth = width - paddingLeft - paddingRight;
-      const graphHeight = height - paddingTop - paddingBottom;
-
-      let dataMin = 0;
-      if (points.length > 0) {
-        dataMin = Math.min.apply(null, points.map(function(p){ return p.value; }));
-      }
-
+      const paddingLeft = 110; const paddingRight = 45; const paddingTop = 45; const paddingBottom = 45;
+      const graphWidth = width - paddingLeft - paddingRight; const graphHeight = height - paddingTop - paddingBottom;
+      let dataMin = points.length > 0 ? Math.min.apply(null, points.map(function(p){ return p.value; })) : 0;
       const selectedMax = parseInt(elements.trendMaxSelect.value, 10) || 1000000;
       const step = selectedMax / 10;
       const minVal = dataMin >= 0 ? 0 : -Math.ceil(Math.abs(dataMin) / step) * step;
       const valRange = selectedMax - minVal;
       const totalDivisions = Math.round(valRange / step);
-
       ctx.lineWidth = 1;
       ctx.fillStyle = "#334155";
       ctx.font = "bold 11px system-ui, sans-serif";
       ctx.textAlign = "right";
       ctx.textBaseline = "middle";
-
       for (let i = 0; i <= totalDivisions; i++) {
         const val = minVal + i * step;
         const ratio = (val - minVal) / valRange;
         const y = paddingTop + graphHeight * (1 - ratio);
-        
         ctx.beginPath();
-        ctx.moveTo(paddingLeft, y);
-        ctx.lineTo(width - paddingRight, y);
-        
-        if (val === 0 && minVal < 0) {
-          ctx.strokeStyle = "#475569";
-          ctx.lineWidth = 1.5;
-        } else {
-          ctx.strokeStyle = "#e2e8f0";
-          ctx.lineWidth = 1;
-        }
+        ctx.moveTo(paddingLeft, y); ctx.lineTo(width - paddingRight, y);
+        if (val === 0 && minVal < 0) { ctx.strokeStyle = "#475569"; ctx.lineWidth = 1.5; }
+        else { ctx.strokeStyle = "#e2e8f0"; ctx.lineWidth = 1; }
         ctx.stroke();
-        
-        const label = val.toLocaleString("ja-JP") + "円";
-        ctx.fillText(label, paddingLeft - 12, y);
+        ctx.fillText(val.toLocaleString("ja-JP") + "円", paddingLeft - 12, y);
       }
-
       if (points.length > 0) {
         ctx.beginPath();
         points.forEach(function (p, idx) {
@@ -748,56 +626,23 @@
           const x = paddingLeft + graphWidth * xRatio;
           const yRatio = valRange !== 0 ? (p.value - minVal) / valRange : 0.5;
           const y = paddingTop + graphHeight * (1 - yRatio);
-
-          if (idx === 0) {
-            ctx.moveTo(x, y);
-          } else {
-            ctx.lineTo(x, y);
-          }
-
-          // 🛠️ あとでクリック判定に使うため、計算されたx, y座標を保存
-          activeCalculatedPoints.push({ x: x, y: y, date: p.date, value: p.value });
+          if (idx === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+          clickTargets.push({ x: x, y: y, date: p.date, value: p.value });
         });
-
-        ctx.strokeStyle = "#0f172a"; 
-        ctx.lineWidth = 4.5;
-        ctx.lineJoin = "round";
-        ctx.lineCap = "round";
-        ctx.stroke();
-
+        ctx.strokeStyle = "#0f172a"; ctx.lineWidth = 4.5; ctx.lineJoin = "round"; ctx.lineCap = "round"; ctx.stroke();
         points.forEach(function (p, idx) {
           const xRatio = points.length > 1 ? idx / (points.length - 1) : 0.5;
           const x = paddingLeft + graphWidth * xRatio;
           const yRatio = valRange !== 0 ? (p.value - minVal) / valRange : 0.5;
           const y = paddingTop + graphHeight * (1 - yRatio);
-
-          ctx.beginPath();
-          ctx.arc(x, y, 4, 0, Math.PI * 2);
-          ctx.fillStyle = "#ffffff";
-          ctx.fill();
-          ctx.strokeStyle = "#0f172a";
-          ctx.lineWidth = 2.5;
-          ctx.stroke();
-
-          /* 🛠️ クリックで確認できるようになったため、デフォルトのグラフ上の金額テキストは削除しました */
-
-          ctx.fillStyle = "#334155";
-          ctx.font = "bold 11px system-ui, sans-serif";
-          ctx.textAlign = "center";
-          ctx.textBaseline = "top";
-          
+          ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fillStyle = "#ffffff"; ctx.fill();
+          ctx.strokeStyle = "#0f172a"; ctx.lineWidth = 2.5; ctx.stroke();
+          ctx.fillStyle = "#0f172a"; ctx.font = "bold 11px system-ui, sans-serif";
+          ctx.textAlign = "center"; ctx.textBaseline = "bottom"; ctx.fillText(p.value.toLocaleString("ja-JP") + "円", x, y - 8);
+          ctx.fillStyle = "#334155"; ctx.textAlign = "center"; ctx.textBaseline = "top";
           let showLabel = true;
-          if (points.length > 6) {
-            const skip = Math.ceil(points.length / 5);
-            if (idx % skip !== 0 && idx !== points.length - 1) {
-              showLabel = false;
-            }
-          }
-
-          if (showLabel) {
-            const displayDate = p.date.replace(/^\d{4}-/, '');
-            ctx.fillText(displayDate, x, height - paddingBottom + 12);
-          }
+          if (points.length > 6) { const skip = Math.ceil(points.length / 5); if (idx % skip !== 0 && idx !== points.length - 1) showLabel = false; }
+          if (showLabel) ctx.fillText(p.date.replace(/^\d{4}-/, ''), x, height - paddingBottom + 12);
         });
       }
     }
